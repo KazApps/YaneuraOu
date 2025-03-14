@@ -26,6 +26,17 @@ namespace Eval {
 	// "isready"タイミングで毎回(探索部から)呼び出される。
 	void init();
 
+	// 評価関数ファイルを読み込む。
+	// 時間のかかる評価関数の初期化処理はここに書くこと。
+	// これは、"is_ready"コマンドの応答時に1度だけ呼び出される。2度呼び出すことは想定していない。
+	// (ただし、EvalDir(評価関数フォルダ)が変更になったあと、isreadyが再度送られてきたら読みなおす。)
+	void load_eval();
+
+	// 駒割りを計算する。Position::set()から呼び出されて、以降do_move()では差分計算されるのでこの関数は呼び出されない。
+	Value material(const Position& pos);
+
+#if !defined(EVAL_NNUE)
+
 	// 駒割り以外の全計算して、その合計を返す。Position::set()で一度だけ呼び出される。
 	// あるいは差分計算が不可能なときに呼び出される。
 	Value compute_eval(const Position& pos);
@@ -40,17 +51,20 @@ namespace Eval {
 	// 評価値の内訳表示(デバッグ用)
 	void print_eval_stat(Position& pos);
 
-	// 評価関数ファイルを読み込む。
-	// 時間のかかる評価関数の初期化処理はここに書くこと。
-	// これは、"is_ready"コマンドの応答時に1度だけ呼び出される。2度呼び出すことは想定していない。
-	// (ただし、EvalDir(評価関数フォルダ)が変更になったあと、isreadyが再度送られてきたら読みなおす。)
-	void load_eval();
-
 	// 評価関数本体
 	Value evaluate(const Position& pos);
 
-	// 駒割りを計算する。Position::set()から呼び出されて、以降do_move()では差分計算されるのでこの関数は呼び出されない。
-	Value material(const Position& pos);
+#else
+
+namespace NNUE {
+	struct AccumulatorCache;
+}
+
+	Value evaluate(const Position&               pos,
+				   Eval::NNUE::AccumulatorCache& cache,
+				   int                           optimism);
+
+#endif
 
 
 #if defined(EVAL_KPPT) || defined(EVAL_KPP_KKPT)
@@ -376,16 +390,16 @@ namespace Eval {
 	// 動く駒は、最大で2個。
 	struct DirtyPiece
 	{
-		// その駒番号の駒が何から何に変わったのか
-		Eval::ChangedBonaPiece changed_piece[2];
-
-		// dirtyになった駒番号
-		PieceNumber pieceNo[2];
-
 		// dirtyになった個数。
 		// null moveだと0ということもありうる。
 		// 動く駒と取られる駒とで最大で2つ。
 		int dirty_num;
+
+		Piece  piece[2];
+		Square from[2];
+		Square to[2];
+		int hand_bit[2];
+		bool promote;
 	};
 #endif // defined(USE_EVAL_LIST)
 

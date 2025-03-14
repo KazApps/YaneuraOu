@@ -95,7 +95,7 @@ namespace Eval
 	}
 #endif
 
-#if defined(USE_EVAL_LIST)
+#if defined(USE_EVAL_LIST) && 0
 	// 内部で保持しているpieceListFb[]が正しいBonaPieceであるかを検査する。
 	// 注 : デバッグ用。遅い。
 	bool EvalList::is_valid(const Position& pos)

@@ -164,7 +164,7 @@ EVAL_EMBEDDING = OFF
 ifneq (,$(findstring em++,$(COMPILER)))
 	CPPFLAGS += -O2
 else
-	CPPFLAGS += -Ofast
+	CPPFLAGS += -O3 -ffast-math
 endif
 
 # デバッガーを使わないなら、NDEBUGをdefineする。
@@ -242,10 +242,10 @@ else
 	ifeq ($(OS),Windows_NT)
 		CPPFLAGS += $(WCPPFLAGS)
 		LDFLAGS += -static -Wl,--stack,25000000
-		TARGET = $(TARGETDIR)/YaneuraOu-by-gcc.exe
+		TARGET = $(TARGETDIR)/YaneuraOu-sfnn.exe
 	else
 		CPPFLAGS += -D_LINUX
-		TARGET = $(TARGETDIR)/YaneuraOu-by-gcc
+		TARGET = $(TARGETDIR)/YaneuraOu-sfnn
 	endif
 endif
 
@@ -462,47 +462,16 @@ ifneq (,$(findstring YANEURAOU_ENGINE_DEEP,$(YANEURAOU_EDITION)))
 endif
 
 ifneq (,$(findstring YANEURAOU_ENGINE_NNUE,$(YANEURAOU_EDITION)))
-	ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE)
-	else
-		# YANEURAOU_EDITIONがYANEURAOU_ENGINE_NNUEの後ろに文字が入っている名前なら、これは
-		# 標準NNUE型の亜種なので、とりあえず"YANEURAOU_ENGINE_NNUE"というシンボルを定義してやる。
-		CPPFLAGS += -DYANEURAOU_ENGINE_NNUE
-
-		ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_KP256)
-			CPPFLAGS += -DEVAL_NNUE_KP256
-
-		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_HALFKPE9)
-			CPPFLAGS += -DEVAL_NNUE_HALFKPE9
-
-		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_HALFKP_512X2_16_32)
-			CPPFLAGS += -DEVAL_NNUE_HALFKP_512X2_16_32
-
-		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_HALFKP_1024X2_8_32)
-			CPPFLAGS += -DEVAL_NNUE_HALFKP_1024X2_8_32
-
-		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_HALFKP_VM_256X2_32_32)
-			CPPFLAGS += -DEVAL_NNUE_HALFKP_VM_256X2_32_32
-
-		else
-			# 知らないNNUEのarchitectureなので、architecture headerを動的に生成する。
-			ARCH_HEADER_FILE = \"architectures/$(subst YANEURAOU_ENGINE_NNUE_,,$(YANEURAOU_EDITION)).h\"
-			CPPFLAGS += -DNNUE_ARCHITECTURE_HEADER=$(ARCH_HEADER_FILE)
-			ARCH_GEN_SCRIPT = $(PYTHON) eval/nnue/architectures/nnue_arch_gen.py $(YANEURAOU_EDITION) eval/nnue/architectures
-		endif
-	endif
+	CPPFLAGS += -DYANEURAOU_ENGINE_NNUE
 
 	# 大して大きなファイルではないので全部してしまう。
 	SOURCES += \
 		eval/nnue/evaluate_nnue.cpp                                     \
 		eval/nnue/evaluate_nnue_learner.cpp                             \
-		eval/nnue/nnue_test_command.cpp                                 \
-		eval/nnue/features/k.cpp                                        \
-		eval/nnue/features/p.cpp                                        \
+		eval/nnue/network.cpp                                           \
+		eval/nnue/nnue_misc.cpp                                         \
 		eval/nnue/features/half_kp.cpp                                  \
-		eval/nnue/features/half_kp_vm.cpp                               \
-		eval/nnue/features/half_relative_kp.cpp                         \
-		eval/nnue/features/half_kpe9.cpp                                \
-		eval/nnue/features/pe9.cpp                                      \
+		eval/nnue/features/half_ka_v2_hm.cpp                            \
 		engine/yaneuraou-engine/yaneuraou-search.cpp
 
 	ifneq (,$(findstring em++,$(COMPILER)))

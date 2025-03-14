@@ -134,11 +134,6 @@ void USI::extra_option(USI::OptionsMap & o)
 	// fail low/highのときにPVを出力するかどうか。
 	o["OutputFailLHPV"] << Option(true);
 
-#if defined(YANEURAOU_ENGINE_NNUE)
-	// NNUEのFV_SCALEの値
-	o["FV_SCALE"] << Option(16, 1, 128);
-#endif
-
 	// Stockfishには、Eloレーティングを指定して棋力調整するためのエンジンオプションがあるようだが…。
 	// o["UCI_Elo"]               << Option(1320, 1320, 3190);
 
@@ -152,12 +147,6 @@ void gameover_handler([[maybe_unused]] const std::string& cmd)
 	result_log << cmd << std::endl << std::flush;
 #endif
 }
-
-#if defined(YANEURAOU_ENGINE_NNUE)
-void init_fv_scale() {
-	Eval::NNUE::FV_SCALE = (int)Options["FV_SCALE"];
-}
-#endif
 
 
 // "isready"に対して探索パラメーターを動的にファイルから読み込んだりして初期化するための関数。
@@ -363,10 +352,10 @@ struct Skill {
 constexpr int MAX_QUIETS_SEARCHED = 32 /*32*/;
 
 template <NodeType nodeType>
-Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, bool cutNode);
+Value search(Thread& th, Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, bool cutNode);
 
 template <NodeType nodeType>
-Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth = 0);
+Value qsearch(Thread& th, Position& pos, Stack* ss, Value alpha, Value beta, Depth depth = 0);
 
 Value value_to_tt(Value v, int ply);
 Value value_from_tt(Value v, int ply /*,int r50c */);
@@ -493,16 +482,6 @@ void Search::clear()
 	TT.clear();
 	Threads.clear();
 	//	Tablebases::init(Options["SyzygyPath"]); // Free up mapped files
-
-	// -----------------------
-	//   評価関数の定数を初期化
-	// -----------------------
-
-#if defined(YANEURAOU_ENGINE_NNUE)
-	// エンジンオプションのFV_SCALEでEval::NNUE::FV_SCALEを初期化する。
-	init_fv_scale();
-#endif
-
 }
 
 // MainThread::search() is started when the program receives the UCI 'go'
@@ -1142,6 +1121,10 @@ void Thread::search()
 			alpha     = std::max(avg - delta,-VALUE_INFINITE);
 			beta      = std::min(avg + delta, VALUE_INFINITE);
 
+			// Adjust optimism based on root move's averageScore
+			optimism[us]  = 138 * avg / (std::abs(avg) + 84);
+			optimism[~us] = -optimism[us];
+
 			// Adjust optimism based on root move's previousScore (~4 Elo)
             //optimism[ us] = 150 * avg / (std::abs(avg) + 85);
             //optimism[~us] = -optimism[us];
@@ -1166,7 +1149,7 @@ void Thread::search()
 				// fail highするごとにdepthを下げていく処理
 				Depth adjustedDepth = std::max(1, rootDepth - failedHighCnt - 3 * (searchAgainCounter + 1) / 4);
 				rootDelta = beta - alpha;
-				bestValue = ::search<Root>(rootPos, ss, alpha, beta, adjustedDepth, false);
+				bestValue = ::search<Root>(*this, rootPos, ss, alpha, beta, adjustedDepth, false);
 
 				// Bring the best move to the front. It is critical that sorting
 				// is done with a stable algorithm because all the values but the
@@ -1450,7 +1433,7 @@ namespace {
 // cutNode = LMRで悪そうな指し手に対してreduction量を増やすnode
 
 template <NodeType nodeType>
-Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, bool cutNode)
+Value search(Thread& th, Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, bool cutNode)
 {
 	// -----------------------
 	//     nodeの種類
@@ -1469,8 +1452,9 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
 
 	// Dive into quiescence search when the depth reaches zero
 	// 残り探索深さが1手未満であるなら現在の局面のまま静止探索を呼び出す
-	if (depth <= 0)
-		return qsearch<PvNode ? PV : NonPV>(pos, ss, alpha, beta);
+	if (depth <= 0) {
+		return qsearch<PvNode ? PV : NonPV>(th, pos, ss, alpha, beta);
+	}
 
 	// Limit the depth if extensions made it too large
 	// 拡張によって深さが大きくなりすぎた場合、深さを制限します
@@ -2027,30 +2011,12 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
 		// 1手詰めと宣言勝ちがなかったのでこの時点でもsave()したほうがいいような気がしなくもない。
 	}
 
-	// -----------------------
-	//     Lazy Evaluator
-	// 評価関数の遅延評価子(やねうら王独自拡張)
-	// -----------------------
-
 	// この局面で評価関数を呼び出したのか。(do_move()までには呼ばないと駄目)
 	Value evaluatedValue = VALUE_NONE;
-	auto evaluate = [&](Position& pos)
-		{
-			if (evaluatedValue == VALUE_NONE)
-				evaluatedValue = ::evaluate(pos);
-			return evaluatedValue;
-		};
-	auto lazy_evaluate = [&](Position& pos) {
-#if defined(USE_LAZY_EVALUATE) && defined(USE_DIFF_EVAL)
-		// ⇨ 差分計算型の評価関数ではないときは、lazy_evaluateする必要がないので、駒得評価関数のときは何もしない。
-		if (evaluatedValue == VALUE_NONE)
-		{
-			evaluatedValue = VALUE_INFINITE;
-			::evaluate_with_no_return(pos);
-			//evaluatedValue = ::evaluate(pos);
-		}
-#endif
-		};
+
+	auto evaluate = [&](const Position& pos) {
+		return th.evaluate(pos);
+	};
 
 	// -----------------------
 	// Step 6. Static evaluation of the position
@@ -2267,7 +2233,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
 	if (eval < alpha - 469 - 307 * depth * depth)
 	// ↑ここのパラメーター調整しても ~1 Eloなので調整しないことにする。
 	{
-		value = qsearch<NonPV>(pos, ss, alpha - 1, alpha);
+		value = qsearch<NonPV>(th, pos, ss, alpha - 1, alpha);
 		if (value < alpha && std::abs(value) < VALUE_TB_WIN_IN_MAX_PLY)
 			return value;
 	}
@@ -2345,10 +2311,9 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
 		// ここでは現局面で手番側に王手がかかっていない = 直前の指し手(非手番側)は王手ではない ことがわかっている。
 		// do_null_move()は、この条件を満たす必要がある。
 
-		lazy_evaluate(pos);
 		pos.do_null_move(st);
 
-		Value nullValue = -search<NonPV>(pos, ss + 1, -beta, -beta + 1, depth - R, false);
+		Value nullValue = -search<NonPV>(th, pos, ss + 1, -beta, -beta + 1, depth - R, false);
 
 		pos.undo_null_move();
 
@@ -2376,7 +2341,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
 			thisThread->nmpMinPly = ss->ply + 3 * (depth - R) / 4 ;
 
 			// nullMoveせずに(現在のnodeと同じ手番で)同じ深さで探索しなおして本当にbetaを超えるか検証する。cutNodeにしない。
-			Value v = search<NonPV>(pos, ss, beta - 1, beta, depth - R, false);
+			Value v = search<NonPV>(th, pos, ss, beta - 1, beta, depth - R, false);
 
 			thisThread->nmpMinPly = 0;
 
@@ -2401,7 +2366,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
 	// (depthをreductionした結果、)もしdepth <= 0ならqsearchを用いる
 
 	if (depth <= 0)
-		return qsearch<PV>(pos, ss, alpha, beta);
+		return qsearch<PV>(th, pos, ss, alpha, beta);
 
 	// For cutNodes, if depth is high enough, decrease depth by 2 if there is no ttMove,
 	// or by 1 if there is a ttMove with an upper bound.
@@ -2486,19 +2451,18 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
 			// TODO:あとで
 			//thisThread->nodes.fetch_add(1, std::memory_order_relaxed);
 
-			lazy_evaluate(pos);
 			pos.do_move(move, st);
 
 			// Perform a preliminary qsearch to verify that the move holds
 			// この指し手がよさげであることを確認するための予備的なqsearch
 
-			value = -qsearch<NonPV>(pos, ss + 1, -probCutBeta, -probCutBeta + 1);
+			value = -qsearch<NonPV>(th, pos, ss + 1, -probCutBeta, -probCutBeta + 1);
 
 			// If the qsearch held, perform the regular search
 			// よさげであったので、普通に探索する
 
 			if (value >= probCutBeta)
-				value = -search<NonPV>(pos, ss + 1, -probCutBeta, -probCutBeta + 1, depth - 4, !cutNode);
+				value = -search<NonPV>(th, pos, ss + 1, -probCutBeta, -probCutBeta + 1, depth - 4, !cutNode);
 
 			pos.undo_move(move);
 
@@ -2851,7 +2815,7 @@ moves_loop: // When in check, search starts here
 				ss->excludedMove = move;
 				// 局面はdo_move()で進めずにこのnodeから浅い探索深さで探索しなおす。
 				// 浅いdepthでnull windowなので、すぐに探索は終わるはず。
-				value = search<NonPV>(pos, ss, singularBeta - 1, singularBeta, singularDepth, cutNode);
+				value = search<NonPV>(th, pos, ss, singularBeta - 1, singularBeta, singularDepth, cutNode);
 				ss->excludedMove = Move::none();
 
 				// 置換表の指し手以外がすべてfail lowしているならsingular延長確定。
@@ -2984,7 +2948,6 @@ moves_loop: // When in check, search starts here
 		// -----------------------
 
 		// 指し手で1手進める
-		lazy_evaluate(pos);
 		pos.do_move(move, st, givesCheck);
 
 		// These reduction adjustments have proven non-linear scaling.
@@ -3096,7 +3059,7 @@ moves_loop: // When in check, search starts here
 
             Depth d = std::max(1, std::min(newDepth - r/1024, newDepth + !allNode));
 
-			value = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, d, true);
+			value = -search<NonPV>(th, pos, ss + 1, -(alpha + 1), -alpha, d, true);
 
 			// Do a full-depth search when reduced LMR search fails high
 			// 深さを減らしたLMR探索がfail highをした時、full depth(元の探索深さ)で探索する。
@@ -3114,7 +3077,7 @@ moves_loop: // When in check, search starts here
 				newDepth += doDeeperSearch - doShallowerSearch;
 
 				if (newDepth > d)
-					value = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, newDepth, !cutNode);
+					value = -search<NonPV>(th, pos, ss + 1, -(alpha + 1), -alpha, newDepth, !cutNode);
 
 				// Post LMR continuation history updates (~1 Elo)
 				// LMR後のcontinuation historyの更新（約1 Elo）
@@ -3141,7 +3104,7 @@ moves_loop: // When in check, search starts here
 			// Note that if expected reduction is high, we reduce search depth by 1 here (~9 Elo)
 			// 期待される削減が大きい場合、ここで探索深さを1減らすことに注意してください。（約9 Elo）
 
-			value = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, newDepth - (r > 2983), !cutNode);
+			value = -search<NonPV>(th, pos, ss + 1, -(alpha + 1), -alpha, newDepth - (r > 2983), !cutNode);
 		}
 
 		// For PV nodes only, do a full PV search on the first move or after a fail high,
@@ -3168,7 +3131,7 @@ moves_loop: // When in check, search starts here
 				newDepth = std::max(newDepth, 1);
 
 			// full depthで探索するときはcutNodeにしてはいけない。
-			value = -search<PV>(pos, ss+1, -beta, -alpha, newDepth, false);
+			value = -search<PV>(th, pos, ss+1, -beta, -alpha, newDepth, false);
 		}
 
 		// -----------------------
@@ -3559,7 +3522,7 @@ moves_loop: // When in check, search starts here
 
 
 template <NodeType nodeType>
-Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth)
+Value qsearch(Thread& th, Position& pos, Stack* ss, Value alpha, Value beta, Depth depth)
 {
 	// チェスと異なり将棋では、手駒があるため、王手を無条件で延長するとかなりの長手数、王手が続くことがある。
 	// 手駒が複数あると、その組み合わせをすべて延長してしまうことになり、組み合わせ爆発を容易に起こす。
@@ -3758,29 +3721,12 @@ Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth)
 
 		return ttData.value;
 
-	// -----------------------
-	//     Lazy Evaluator
-	// 評価関数の遅延評価子(やねうら王独自拡張)
-	// -----------------------
-
 	// この局面で評価関数を呼び出したのか。(do_move()までには呼ばないと駄目)
 	Value evaluatedValue = VALUE_NONE;
 	auto evaluate = [&](Position& pos)
 		{
-			if (evaluatedValue == VALUE_NONE)
-				evaluatedValue = ::evaluate(pos);
-			return evaluatedValue;
+			return th.evaluate(pos);
 		};
-	auto lazy_evaluate = [&](Position& pos) {
-#if defined(USE_LAZY_EVALUATE) && defined(USE_DIFF_EVAL)
-		if (evaluatedValue == VALUE_NONE)
-		{
-			evaluatedValue = VALUE_INFINITE;
-			::evaluate_with_no_return(pos);
-			//evaluatedValue = ::evaluate(pos);
-		}
-#endif
-	};
 
 	// -----------------------
 	// Step 4. Static evaluation of the position
@@ -4143,9 +4089,8 @@ Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth)
 		// -----------------------
 
 		// 1手動かして、再帰的にqsearch()を呼ぶ
-		lazy_evaluate(pos);
 		pos.do_move(move, st, givesCheck);
-		value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha, depth - 1);
+		value = -qsearch<nodeType>(th, pos, ss + 1, -beta, -alpha, depth - 1);
 		pos.undo_move(move);
 
 		ASSERT_LV3(-VALUE_INFINITE < value && value < VALUE_INFINITE);
@@ -5049,10 +4994,6 @@ void init_for_search(Position& pos, Stack* ss , Move pv[], bool qsearch)
 		// 探索前に自分(のスレッド用)の置換表の世代カウンターを回してやる。
 		th->tt.new_search();
 	}
-
-#if defined(YANEURAOU_ENGINE_NNUE)
-	init_fv_scale();
-#endif
 }
 
 // 読み筋と評価値のペア。Learner::search(),Learner::qsearch()が返す。
@@ -5107,7 +5048,7 @@ ValuePV qsearch(Position& pos)
 	// 探索の初期化
 	init_for_search(pos, ss , pv, /* qsearch = */true);
 
-	auto bestValue = ::qsearch<PV>(pos, ss, -VALUE_INFINITE, VALUE_INFINITE, 0);
+	auto bestValue = ::qsearch<PV>(th, pos, ss, -VALUE_INFINITE, VALUE_INFINITE, 0);
 
 	// 得られたPVを返す。
 	for (Move* p = &ss->pv[0]; p->is_ok(); ++p)

@@ -1,80 +1,115 @@
-﻿// NNUE評価関数の入力特徴量HalfKPの定義
+﻿/*
+  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
-#include "../../../config.h"
+  Stockfish is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-#if defined(EVAL_NNUE)
+  Stockfish is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+//Definition of input features HalfKAv2_hm of NNUE evaluation function
 
 #include "half_kp.h"
-#include "index_list.h"
 
-namespace Eval {
+#include "../../../bitboard.h"
+#include "../../../position.h"
+#include "../../../types.h"
+#include "../nnue_accumulator.h"
 
-namespace NNUE {
+namespace Eval::NNUE::Features {
 
-namespace Features {
-
-// 玉の位置とBonaPieceから特徴量のインデックスを求める
-template <Side AssociatedKing>
-inline IndexType HalfKP<AssociatedKing>::MakeIndex(Square sq_k, BonaPiece p) {
-  return static_cast<IndexType>(fe_end) * static_cast<IndexType>(sq_k) + p;
+template<Color Perspective>
+inline IndexType orient(Square s) {
+    return Perspective == BLACK ? s : Flip(s);
 }
 
-// 駒の情報を取得する
-template <Side AssociatedKing>
-inline void HalfKP<AssociatedKing>::GetPieces(
-    const Position& pos, Color perspective,
-    BonaPiece** pieces, Square* sq_target_k) {
-  *pieces = (perspective == BLACK) ?
-      pos.eval_list()->piece_list_fb() :
-      pos.eval_list()->piece_list_fw();
-  const PieceNumber target = (AssociatedKing == Side::kFriend) ?
-      static_cast<PieceNumber>(PIECE_NUMBER_KING + perspective) :
-      static_cast<PieceNumber>(PIECE_NUMBER_KING + ~perspective);
-  *sq_target_k = static_cast<Square>(((*pieces)[target] - f_king) % SQ_NB);
+template<Color Perspective>
+inline IndexType orient(int bit) {
+    return Perspective == BLACK ? bit : (bit + 32 - 64 * (bit >= 32));
 }
 
-// 特徴量のうち、値が1であるインデックスのリストを取得する
-template <Side AssociatedKing>
-void HalfKP<AssociatedKing>::AppendActiveIndices(
-    const Position& pos, Color perspective, IndexList* active) {
-  // コンパイラの警告を回避するため、配列サイズが小さい場合は何もしない
-  if (RawFeatures::kMaxActiveDimensions < kMaxActiveDimensions) return;
-
-  BonaPiece* pieces;
-  Square sq_target_k;
-  GetPieces(pos, perspective, &pieces, &sq_target_k);
-  for (PieceNumber i = PIECE_NUMBER_ZERO; i < PIECE_NUMBER_KING; ++i) {
-    active->push_back(MakeIndex(sq_target_k, pieces[i]));
-  }
+// Index of a feature for a given king position and another piece on some square
+template<Color Perspective>
+inline IndexType HalfKP::make_board_index(Square s, Piece pc, Square ksq) {
+    return IndexType(1 + orient<Perspective>(s) + PieceSquareIndex[Perspective][pc] + orient<Perspective>(ksq) * NumPlanes);
 }
 
-// 特徴量のうち、一手前から値が変化したインデックスのリストを取得する
-template <Side AssociatedKing>
-void HalfKP<AssociatedKing>::AppendChangedIndices(
-    const Position& pos, Color perspective,
-    IndexList* removed, IndexList* added) {
-  BonaPiece* pieces;
-  Square sq_target_k;
-  GetPieces(pos, perspective, &pieces, &sq_target_k);
-  const auto& dp = pos.state()->dirtyPiece;
-  for (int i = 0; i < dp.dirty_num; ++i) {
-    if (dp.pieceNo[i] >= PIECE_NUMBER_KING) continue;
-    const auto old_p = static_cast<BonaPiece>(
-        dp.changed_piece[i].old_piece.from[perspective]);
-    removed->push_back(MakeIndex(sq_target_k, old_p));
-    const auto new_p = static_cast<BonaPiece>(
-        dp.changed_piece[i].new_piece.from[perspective]);
-    added->push_back(MakeIndex(sq_target_k, new_p));
-  }
+template<Color Perspective>
+inline IndexType HalfKP::make_hand_index(int bit, Square ksq) {
+    return IndexType(1 + orient<Perspective>(bit) + PS_NB + orient<Perspective>(ksq) * NumPlanes);
 }
 
-template class HalfKP<Side::kFriend>;
-template class HalfKP<Side::kEnemy>;
+// Get a list of indices for active features
+template<Color Perspective>
+void HalfKP::append_active_indices(const Position& pos, IndexList& active) {
+    Square   ksq       = pos.king_square<Perspective>();
+    Bitboard bb        = pos.pieces() & ~(pos.pieces(KING));
+    u64      hand_bits = pos.hand_bits();
 
-}  // namespace Features
+    while (bb)
+    {
+        Square s = bb.pop();
+        active.push_back(make_board_index<Perspective>(s, pos.piece_on(s), ksq));
+    }
 
-}  // namespace NNUE
+    while (hand_bits)
+        active.push_back(make_hand_index<Perspective>(pop_lsb(hand_bits), ksq));
+}
 
-}  // namespace Eval
+// Explicit template instantiations
+template void HalfKP::append_active_indices<BLACK>(const Position& pos, IndexList& active);
+template void HalfKP::append_active_indices<WHITE>(const Position& pos, IndexList& active);
+template IndexType HalfKP::make_board_index<BLACK>(Square s, Piece pc, Square ksq);
+template IndexType HalfKP::make_board_index<WHITE>(Square s, Piece pc, Square ksq);
+template IndexType HalfKP::make_hand_index<BLACK>(int bit, Square ksq);
+template IndexType HalfKP::make_hand_index<WHITE>(int bit, Square ksq);
 
-#endif  // defined(EVAL_NNUE)
+// Get a list of indices for recently changed features
+template<Color Perspective>
+void HalfKP::append_changed_indices(Square            ksq,
+                                    const DirtyPiece& dp,
+                                    IndexList&        removed,
+                                    IndexList&        added) {
+    for (int i = 0; i < dp.dirty_num; ++i)
+    {
+        if (type_of(dp.piece[i]) == KING)
+            continue;
+
+        if (dp.from[i] == SQ_NB && dp.hand_bit[i] != -1)
+            removed.push_back(make_hand_index<Perspective>(dp.hand_bit[i], ksq));
+        else
+            removed.push_back(make_board_index<Perspective>(dp.from[i], dp.piece[i], ksq));
+        
+        if (dp.to[i] == SQ_NB && dp.hand_bit[i] != -1)
+            added.push_back(make_hand_index<Perspective>(dp.hand_bit[i], ksq));
+        else if (dp.promote)
+            added.push_back(make_board_index<Perspective>(dp.to[i], make_promoted_piece(dp.piece[i]), ksq));
+        else
+            added.push_back(make_board_index<Perspective>(dp.to[i], dp.piece[i], ksq));
+    }
+}
+
+// Explicit template instantiations
+template void HalfKP::append_changed_indices<BLACK>(Square            ksq,
+                                                    const DirtyPiece& dp,
+                                                    IndexList&        removed,
+                                                    IndexList&        added);
+template void HalfKP::append_changed_indices<WHITE>(Square            ksq,
+                                                    const DirtyPiece& dp,
+                                                    IndexList&        removed,
+                                                    IndexList&        added);
+
+bool HalfKP::requires_refresh(const StateInfo* st, Color perspective) {
+    return st->dirtyPiece.piece[0] == make_piece(perspective, KING);
+}
+
+}  // namespace Eval::NNUE::Features

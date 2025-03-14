@@ -1,33 +1,85 @@
-﻿// NNUE評価関数の差分計算用のクラス
+/*
+  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
-#ifndef _NNUE_ACCUMULATOR_H_
-#define _NNUE_ACCUMULATOR_H_
+  Stockfish is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-#include "../../config.h"
+  Stockfish is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-#if defined(EVAL_NNUE)
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+// Class for difference calculation of NNUE evaluation function
+
+#ifndef NNUE_ACCUMULATOR_H_INCLUDED
+#define NNUE_ACCUMULATOR_H_INCLUDED
+
+#include <cstdint>
 
 #include "nnue_architecture.h"
+#include "nnue_common.h"
 
-namespace Eval {
+namespace Eval::NNUE {
 
-namespace NNUE {
+using BiasType       = std::int16_t;
+using PSQTWeightType = std::int32_t;
+using IndexType      = std::uint32_t;
 
-// 入力特徴量をアフィン変換した結果を保持するクラス
-// 最終的な出力である評価値も一緒に持たせておく
-// AVX-512命令を使用する場合に64bytesのアライメントが要求される。
-struct alignas(64) Accumulator {
-  std::int16_t
-      accumulation[2][kRefreshTriggers.size()][kTransformedFeatureDimensions];
-  Value score = VALUE_ZERO;
-  bool computed_accumulation = false;
-  bool computed_score = false;
+// Class that holds the result of affine transformation of input features
+struct alignas(CacheLineSize) Accumulator {
+    std::int16_t accumulation[COLOR_NB][TransformedFeatureDimensions];
+    std::int32_t psqtAccumulation[COLOR_NB][PSQTBuckets];
+    bool         computed[COLOR_NB];
 };
 
-}  // namespace NNUE
+// AccumulatorCache struct provides per-thread accumulator cache, where each
+// cache contains multiple entries for each of the possible king squares.
+// When the accumulator needs to be refreshed, the cached entry is used to more
+// efficiently update the accumulator, instead of rebuilding it from scratch.
+// This idea, was first described by Luecx (author of Koivisto) and
+// is commonly referred to as "Finny Tables".
+struct alignas(CacheLineSize) AccumulatorCache {
+    AccumulatorCache() = default;
 
-}  // namespace Eval
+    template<typename Network>
+    AccumulatorCache(const Network& network) { clear(network); }
 
-#endif  // defined(EVAL_NNUE)
+    struct alignas(CacheLineSize) Entry {
+        BiasType       accumulation[TransformedFeatureDimensions];
+        PSQTWeightType psqtAccumulation[PSQTBuckets];
+        Bitboard       byColorBB[COLOR_NB];
+        Bitboard       byTypeBB[PIECE_TYPE_NB];
+        u64            handBits;
 
-#endif
+        // To initialize a refresh entry, we set all its bitboards empty,
+        // so we put the biases in the accumulation, without any weights on top
+        void clear(const BiasType* biases) {
+
+            std::memcpy(accumulation, biases, sizeof(accumulation));
+            std::memset((uint8_t*) this + offsetof(Entry, psqtAccumulation), 0,
+                        sizeof(Entry) - offsetof(Entry, psqtAccumulation));
+        }
+    };
+
+    template<typename Network>
+    void clear(const Network& network) {
+        for (auto& entries1D : entries)
+            for (auto& entry : entries1D)
+                entry.clear(network.featureTransformer->biases);
+    }
+
+    std::array<Entry, COLOR_NB>& operator[](Square sq) { return entries[sq]; }
+
+    std::array<std::array<Entry, COLOR_NB>, SQ_NB> entries;
+};
+
+}  // namespace Eval::NNUE
+
+#endif  // NNUE_ACCUMULATOR_H_INCLUDED

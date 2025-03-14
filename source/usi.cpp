@@ -788,8 +788,10 @@ void usi_cmdexec(Position& pos, StateListPtr& states, string& cmd)
 		}
 
 		// 現在の局面について評価関数を呼び出して、その値を返す。
+#if !defined(EVAL_NNUE)
 		else if (token == "eval") cout << "eval = " << Eval::compute_eval(pos) << endl;
 		else if (token == "evalstat") Eval::print_eval_stat(pos);
+#endif
 
 		// この実行ファイルをコンパイルしたコンパイラの情報を出力する。
 		else if (token == "compiler") sync_cout << compiler_info() << sync_endl;

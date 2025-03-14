@@ -1,417 +1,914 @@
-﻿// A class that converts the input features of the NNUE evaluation function
-// NNUE評価関数の入力特徴量の変換を行うクラス
+﻿/*
+  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
-#ifndef _NNUE_FEATURE_TRANSFORMER_H_INCLUDED
-#define _NNUE_FEATURE_TRANSFORMER_H_INCLUDED
+  Stockfish is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-#include "../../config.h"
+  Stockfish is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-#if defined(EVAL_NNUE)
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
-#include "nnue_common.h"
+// A class that converts the input features of the NNUE evaluation function
+
+#ifndef NNUE_FEATURE_TRANSFORMER_H_INCLUDED
+#define NNUE_FEATURE_TRANSFORMER_H_INCLUDED
+
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <iosfwd>
+#include <type_traits>
+#include <utility>
+
+#include "../../position.h"
+#include "../../types.h"
+#include "nnue_accumulator.h"
 #include "nnue_architecture.h"
-#include "features/index_list.h"
-
-#include <cstring>  // std::memset()
+#include "nnue_common.h"
+#include "features/half_kp.h"
 
 namespace Eval::NNUE {
+
+using BiasType       = std::int16_t;
+using WeightType     = std::int16_t;
+using PSQTWeightType = std::int32_t;
+
+enum IncUpdateDirection {
+    FORWARD,
+    BACKWARDS
+};
 
 // If vector instructions are enabled, we update and refresh the
 // accumulator tile by tile such that each tile fits in the CPU's
 // vector registers.
-// ベクトル命令が有効な場合、変数のタイルを、
-// 各タイルがCPUのベクトルレジスタに収まるように、更新してリフレッシュする。
 #define VECTOR
 
-#if defined(USE_AVX512)
-using vec_t = __m512i;
-#define vec_load(a) _mm512_load_si512(a)
-#define vec_store(a, b) _mm512_store_si512(a, b)
-#define vec_add_16(a, b) _mm512_add_epi16(a, b)
-#define vec_sub_16(a, b) _mm512_sub_epi16(a, b)
-#define vec_zero _mm512_setzero_si512()
-static constexpr IndexType kNumRegs = 8;  // only 8 are needed
+static_assert(PSQTBuckets % 8 == 0,
+              "Per feature PSQT values cannot be processed at granularity lower than 8 at a time.");
 
-#elif defined(USE_AVX2)
-using vec_t = __m256i;
-#define vec_load(a) _mm256_load_si256(a)
-#define vec_store(a, b) _mm256_store_si256(a, b)
-#define vec_add_16(a, b) _mm256_add_epi16(a, b)
-#define vec_sub_16(a, b) _mm256_sub_epi16(a, b)
-#define vec_zero _mm256_setzero_si256()
-static constexpr IndexType kNumRegs = 16;
+#ifdef USE_AVX512
+using vec_t      = __m512i;
+using psqt_vec_t = __m256i;
+    #define vec_load(a) _mm512_load_si512(a)
+    #define vec_store(a, b) _mm512_store_si512(a, b)
+    #define vec_add_16(a, b) _mm512_add_epi16(a, b)
+    #define vec_sub_16(a, b) _mm512_sub_epi16(a, b)
+    #define vec_mulhi_16(a, b) _mm512_mulhi_epi16(a, b)
+    #define vec_zero() _mm512_setzero_epi32()
+    #define vec_set_16(a) _mm512_set1_epi16(a)
+    #define vec_max_16(a, b) _mm512_max_epi16(a, b)
+    #define vec_min_16(a, b) _mm512_min_epi16(a, b)
+    #define vec_slli_16(a, b) _mm512_slli_epi16(a, b)
+    // Inverse permuted at load time
+    #define vec_packus_16(a, b) _mm512_packus_epi16(a, b)
+    #define vec_load_psqt(a) _mm256_load_si256(a)
+    #define vec_store_psqt(a, b) _mm256_store_si256(a, b)
+    #define vec_add_psqt_32(a, b) _mm256_add_epi32(a, b)
+    #define vec_sub_psqt_32(a, b) _mm256_sub_epi32(a, b)
+    #define vec_zero_psqt() _mm256_setzero_si256()
+    #define NumRegistersSIMD 16
+    #define MaxChunkSize 64
 
-#elif defined(USE_SSE2)
-using vec_t = __m128i;
-#define vec_load(a) (*(a))
-#define vec_store(a, b) *(a) = (b)
-#define vec_add_16(a, b) _mm_add_epi16(a, b)
-#define vec_sub_16(a, b) _mm_sub_epi16(a, b)
-#define vec_zero _mm_setzero_si128()
-static constexpr IndexType kNumRegs = Is64Bit ? 16 : 8;
+#elif USE_AVX2
+using vec_t      = __m256i;
+using psqt_vec_t = __m256i;
+    #define vec_load(a) _mm256_load_si256(a)
+    #define vec_store(a, b) _mm256_store_si256(a, b)
+    #define vec_add_16(a, b) _mm256_add_epi16(a, b)
+    #define vec_sub_16(a, b) _mm256_sub_epi16(a, b)
+    #define vec_mulhi_16(a, b) _mm256_mulhi_epi16(a, b)
+    #define vec_zero() _mm256_setzero_si256()
+    #define vec_set_16(a) _mm256_set1_epi16(a)
+    #define vec_max_16(a, b) _mm256_max_epi16(a, b)
+    #define vec_min_16(a, b) _mm256_min_epi16(a, b)
+    #define vec_slli_16(a, b) _mm256_slli_epi16(a, b)
+    // Inverse permuted at load time
+    #define vec_packus_16(a, b) _mm256_packus_epi16(a, b)
+    #define vec_load_psqt(a) _mm256_load_si256(a)
+    #define vec_store_psqt(a, b) _mm256_store_si256(a, b)
+    #define vec_add_psqt_32(a, b) _mm256_add_epi32(a, b)
+    #define vec_sub_psqt_32(a, b) _mm256_sub_epi32(a, b)
+    #define vec_zero_psqt() _mm256_setzero_si256()
+    #define NumRegistersSIMD 16
+    #define MaxChunkSize 32
 
-#elif defined(USE_MMX)
-using vec_t = __m64;
-#define vec_load(a) (*(a))
-#define vec_store(a, b) *(a) = (b)
-#define vec_add_16(a, b) _mm_add_pi16(a, b)
-#define vec_sub_16(a, b) _mm_sub_pi16(a, b)
-#define vec_zero _mm_setzero_si64()
-static constexpr IndexType kNumRegs = 8;
+#elif USE_SSE2
+using vec_t      = __m128i;
+using psqt_vec_t = __m128i;
+    #define vec_load(a) (*(a))
+    #define vec_store(a, b) *(a) = (b)
+    #define vec_add_16(a, b) _mm_add_epi16(a, b)
+    #define vec_sub_16(a, b) _mm_sub_epi16(a, b)
+    #define vec_mulhi_16(a, b) _mm_mulhi_epi16(a, b)
+    #define vec_zero() _mm_setzero_si128()
+    #define vec_set_16(a) _mm_set1_epi16(a)
+    #define vec_max_16(a, b) _mm_max_epi16(a, b)
+    #define vec_min_16(a, b) _mm_min_epi16(a, b)
+    #define vec_slli_16(a, b) _mm_slli_epi16(a, b)
+    #define vec_packus_16(a, b) _mm_packus_epi16(a, b)
+    #define vec_load_psqt(a) (*(a))
+    #define vec_store_psqt(a, b) *(a) = (b)
+    #define vec_add_psqt_32(a, b) _mm_add_epi32(a, b)
+    #define vec_sub_psqt_32(a, b) _mm_sub_epi32(a, b)
+    #define vec_zero_psqt() _mm_setzero_si128()
+    #define NumRegistersSIMD (Is64Bit ? 16 : 8)
+    #define MaxChunkSize 16
 
-#elif defined(USE_NEON)
-using vec_t = int16x8_t;
-#define vec_load(a) (*(a))
-#define vec_store(a, b) *(a) = (b)
-#define vec_add_16(a, b) vaddq_s16(a, b)
-#define vec_sub_16(a, b) vsubq_s16(a, b)
-#define vec_zero \
-	{ 0 }
-static constexpr IndexType kNumRegs = 16;
+#elif USE_NEON
+using vec_t      = int16x8_t;
+using psqt_vec_t = int32x4_t;
+    #define vec_load(a) (*(a))
+    #define vec_store(a, b) *(a) = (b)
+    #define vec_add_16(a, b) vaddq_s16(a, b)
+    #define vec_sub_16(a, b) vsubq_s16(a, b)
+    #define vec_mulhi_16(a, b) vqdmulhq_s16(a, b)
+    #define vec_zero() \
+        vec_t { 0 }
+    #define vec_set_16(a) vdupq_n_s16(a)
+    #define vec_max_16(a, b) vmaxq_s16(a, b)
+    #define vec_min_16(a, b) vminq_s16(a, b)
+    #define vec_slli_16(a, b) vshlq_s16(a, vec_set_16(b))
+    #define vec_packus_16(a, b) reinterpret_cast<vec_t>(vcombine_u8(vqmovun_s16(a), vqmovun_s16(b)))
+    #define vec_load_psqt(a) (*(a))
+    #define vec_store_psqt(a, b) *(a) = (b)
+    #define vec_add_psqt_32(a, b) vaddq_s32(a, b)
+    #define vec_sub_psqt_32(a, b) vsubq_s32(a, b)
+    #define vec_zero_psqt() \
+        psqt_vec_t { 0 }
+    #define NumRegistersSIMD 16
+    #define MaxChunkSize 16
 
 #else
-#undef VECTOR
+    #undef VECTOR
 
 #endif
 
-// Input feature converter
-// 入力特徴量変換器
-class FeatureTransformer {
-   private:
-	// Number of output dimensions for one side
-	// 片側分の出力の次元数
-	static constexpr IndexType kHalfDimensions = kTransformedFeatureDimensions;
+// Returns the inverse of a permutation
+template<std::size_t Len>
+constexpr std::array<std::size_t, Len>
+invert_permutation(const std::array<std::size_t, Len>& order) {
+    std::array<std::size_t, Len> inverse{};
+    for (std::size_t i = 0; i < order.size(); i++)
+        inverse[order[i]] = i;
+    return inverse;
+}
 
+// Divide a byte region of size TotalSize to chunks of size
+// BlockSize, and permute the blocks by a given order
+template<std::size_t BlockSize, typename T, std::size_t N, std::size_t OrderSize>
+void permute(T (&data)[N], const std::array<std::size_t, OrderSize>& order) {
+    constexpr std::size_t TotalSize = N * sizeof(T);
+
+    static_assert(TotalSize % (BlockSize * OrderSize) == 0,
+                  "ChunkSize * OrderSize must perfectly divide TotalSize");
+
+    constexpr std::size_t ProcessChunkSize = BlockSize * OrderSize;
+
+    std::array<std::byte, ProcessChunkSize> buffer{};
+
+    std::byte* const bytes = reinterpret_cast<std::byte*>(data);
+
+    for (std::size_t i = 0; i < TotalSize; i += ProcessChunkSize)
+    {
+        std::byte* const values = &bytes[i];
+
+        for (std::size_t j = 0; j < OrderSize; j++)
+        {
+            auto* const buffer_chunk = &buffer[j * BlockSize];
+            auto* const value_chunk  = &values[order[j] * BlockSize];
+
+            std::copy(value_chunk, value_chunk + BlockSize, buffer_chunk);
+        }
+
+        std::copy(std::begin(buffer), std::end(buffer), values);
+    }
+}
+
+// Compute optimal SIMD register count for feature transformer accumulation.
+template<IndexType TransformedFeatureWidth, IndexType HalfDimensions>
+class SIMDTiling {
 #if defined(VECTOR)
-	static constexpr IndexType kTileHeight = kNumRegs * sizeof(vec_t) / 2;
-	static_assert(kHalfDimensions % kTileHeight == 0, "kTileHeight must divide kHalfDimensions");
-#endif
+    // We use __m* types as template arguments, which causes GCC to emit warnings
+    // about losing some attribute information. This is irrelevant to us as we
+    // only take their size, so the following pragma are harmless.
+    #if defined(__GNUC__)
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wignored-attributes"
+    #endif
+
+    template<typename SIMDRegisterType, typename LaneType, int NumLanes, int MaxRegisters>
+    static constexpr int BestRegisterCount() {
+        constexpr std::size_t RegisterSize = sizeof(SIMDRegisterType);
+        constexpr std::size_t LaneSize     = sizeof(LaneType);
+
+        static_assert(RegisterSize >= LaneSize);
+        static_assert(MaxRegisters <= NumRegistersSIMD);
+        static_assert(MaxRegisters > 0);
+        static_assert(NumRegistersSIMD > 0);
+        static_assert(RegisterSize % LaneSize == 0);
+        static_assert((NumLanes * LaneSize) % RegisterSize == 0);
+
+        const int ideal = (NumLanes * LaneSize) / RegisterSize;
+        if (ideal <= MaxRegisters)
+            return ideal;
+
+        // Look for the largest divisor of the ideal register count that is smaller than MaxRegisters
+        for (int divisor = MaxRegisters; divisor > 1; --divisor)
+            if (ideal % divisor == 0)
+                return divisor;
+
+        return 1;
+    }
+
+    #if defined(__GNUC__)
+        #pragma GCC diagnostic pop
+    #endif
 
    public:
-	// Output type
-	// 出力の型
-	using OutputType = TransformedFeatureType;
+    static constexpr int NumRegs =
+      BestRegisterCount<vec_t, WeightType, TransformedFeatureWidth, NumRegistersSIMD>();
+    static constexpr int NumPsqtRegs =
+      BestRegisterCount<psqt_vec_t, PSQTWeightType, PSQTBuckets, NumRegistersSIMD>();
 
-	// Number of input/output dimensions
-	// 入出力の次元数
-	static constexpr IndexType kInputDimensions  = RawFeatures::kDimensions;
-	static constexpr IndexType kOutputDimensions = kHalfDimensions * 2;
+    static constexpr IndexType TileHeight     = NumRegs * sizeof(vec_t) / 2;
+    static constexpr IndexType PsqtTileHeight = NumPsqtRegs * sizeof(psqt_vec_t) / 4;
 
-	// Size of forward propagation buffer
-	// 順伝播用バッファのサイズ
-	static constexpr std::size_t kBufferSize = kOutputDimensions * sizeof(OutputType);
-
-	// Hash value embedded in the evaluation file
-	// 評価関数ファイルに埋め込むハッシュ値
-	static constexpr std::uint32_t GetHashValue() { return RawFeatures::kHashValue ^ kOutputDimensions; }
-
-	// A string that represents the structure
-	// 構造を表す文字列
-	static std::string GetStructureString() {
-		return RawFeatures::GetName() + "[" + std::to_string(kInputDimensions) + "->" +
-		       std::to_string(kHalfDimensions) + "x2]";
-	}
-
-	// Read network parameters
-	// パラメータを読み込む
-	Tools::Result ReadParameters(std::istream& stream) {
-		for (std::size_t i = 0; i < kHalfDimensions; ++i) biases_[i] = read_little_endian<BiasType>(stream);
-		for (std::size_t i = 0; i < kHalfDimensions * kInputDimensions; ++i)
-			weights_[i] = read_little_endian<WeightType>(stream);
-		return !stream.fail() ? Tools::ResultCode::Ok : Tools::ResultCode::FileReadError;
-	}
-
-	// Write network parameters
-	// パラメータを書き込む
-	bool WriteParameters(std::ostream& stream) const {
-		stream.write(reinterpret_cast<const char*>(biases_), kHalfDimensions * sizeof(BiasType));
-		stream.write(reinterpret_cast<const char*>(weights_), kHalfDimensions * kInputDimensions * sizeof(WeightType));
-		return !stream.fail();
-	}
-
-	// Proceed with the difference calculation if possible
-	// 可能なら差分計算を進める
-	bool UpdateAccumulatorIfPossible(const Position& pos) const {
-		const auto now = pos.state();
-		if (now->accumulator.computed_accumulation) {
-			return true;
-		}
-		const auto prev = now->previous;
-		if (prev && prev->accumulator.computed_accumulation) {
-			update_accumulator(pos);
-			return true;
-		}
-		return false;
-	}
-
-	// Convert input features
-	// 入力特徴量を変換する
-	void Transform(const Position& pos, OutputType* output, bool refresh) const {
-		if (refresh || !UpdateAccumulatorIfPossible(pos)) {
-			refresh_accumulator(pos);
-		}
-		const auto& accumulation = pos.state()->accumulator.accumulation;
-
-#if defined(USE_AVX512)
-		constexpr IndexType kNumChunks = kHalfDimensions / (kSimdWidth * 2);
-		static_assert(kHalfDimensions % (kSimdWidth * 2) == 0);
-		const __m512i kControl = _mm512_setr_epi64(0, 2, 4, 6, 1, 3, 5, 7);
-		const __m512i kZero    = _mm512_setzero_si512();
-
-#elif defined(USE_AVX2)
-		constexpr IndexType kNumChunks = kHalfDimensions / kSimdWidth;
-		constexpr int       kControl   = 0b11011000;
-		const __m256i       kZero      = _mm256_setzero_si256();
-
-#elif defined(USE_SSE2)
-		constexpr IndexType kNumChunks = kHalfDimensions / kSimdWidth;
-#if defined(USE_SSE41)
-		const __m128i kZero = _mm_setzero_si128();
-#else  // SSE41非対応だがSSE2は使える環境
-		const __m128i k0x80s = _mm_set1_epi8(-128);
+    static_assert(HalfDimensions % TileHeight == 0, "TileHeight must divide HalfDimensions");
+    static_assert(PSQTBuckets % PsqtTileHeight == 0, "PsqtTileHeight must divide PSQTBuckets");
 #endif
+};
 
-#elif defined(USE_MMX)
-		// USE_MMX を config.h では現状、有効化することがないので dead code
-		constexpr IndexType kNumChunks = kHalfDimensions / kSimdWidth;
-		const __m64         k0x80s     = _mm_set1_pi8(-128);
 
-#elif defined(USE_NEON)
-		constexpr IndexType kNumChunks = kHalfDimensions / (kSimdWidth / 2);
-		const int8x8_t      kZero      = {0};
-#endif
-		const Color perspectives[2] = {pos.side_to_move(), ~pos.side_to_move()};
-		for (IndexType p = 0; p < 2; ++p) {
-			const IndexType offset = kHalfDimensions * p;
-#if defined(USE_AVX512)
-			auto out = reinterpret_cast<__m512i*>(&output[offset]);
-			for (IndexType j = 0; j < kNumChunks; ++j) {
-				__m512i sum0 =
-				    _mm512_load_si512(&reinterpret_cast<const __m512i*>(accumulation[perspectives[p]][0])[j * 2 + 0]);
-				__m512i sum1 =
-				    _mm512_load_si512(&reinterpret_cast<const __m512i*>(accumulation[perspectives[p]][0])[j * 2 + 1]);
-				for (IndexType i = 1; i < kRefreshTriggers.size(); ++i) {
-					sum0 = _mm512_add_epi16(
-					    sum0, reinterpret_cast<const __m512i*>(accumulation[perspectives[p]][i])[j * 2 + 0]);
-					sum1 = _mm512_add_epi16(
-					    sum1, reinterpret_cast<const __m512i*>(accumulation[perspectives[p]][i])[j * 2 + 1]);
-				}
-				_mm512_store_si512(&out[j], _mm512_permutexvar_epi64(
-				                                kControl, _mm512_max_epi8(_mm512_packs_epi16(sum0, sum1), kZero)));
-			}
+// Input feature converter
+template<IndexType TransformedFeatureDimensions>
+class FeatureTransformer {
 
-#elif defined(USE_AVX2)
-			auto out = reinterpret_cast<__m256i*>(&output[offset]);
-			for (IndexType j = 0; j < kNumChunks; ++j) {
-				__m256i sum0 =
-				    _mm256_load_si256(&reinterpret_cast<const __m256i*>(accumulation[perspectives[p]][0])[j * 2 + 0]);
-				__m256i sum1 =
-				    _mm256_load_si256(&reinterpret_cast<const __m256i*>(accumulation[perspectives[p]][0])[j * 2 + 1]);
-				for (IndexType i = 1; i < kRefreshTriggers.size(); ++i) {
-					sum0 = _mm256_add_epi16(
-					    sum0, reinterpret_cast<const __m256i*>(accumulation[perspectives[p]][i])[j * 2 + 0]);
-					sum1 = _mm256_add_epi16(
-					    sum1, reinterpret_cast<const __m256i*>(accumulation[perspectives[p]][i])[j * 2 + 1]);
-				}
-				_mm256_store_si256(&out[j], _mm256_permute4x64_epi64(
-				                                _mm256_max_epi8(_mm256_packs_epi16(sum0, sum1), kZero), kControl));
-			}
-
-#elif defined(USE_SSE2)
-			auto out = reinterpret_cast<__m128i*>(&output[offset]);
-			for (IndexType j = 0; j < kNumChunks; ++j) {
-				__m128i sum0 =
-				    _mm_load_si128(&reinterpret_cast<const __m128i*>(accumulation[perspectives[p]][0])[j * 2 + 0]);
-				__m128i sum1 =
-				    _mm_load_si128(&reinterpret_cast<const __m128i*>(accumulation[perspectives[p]][0])[j * 2 + 1]);
-				for (IndexType i = 1; i < kRefreshTriggers.size(); ++i) {
-					sum0 = _mm_add_epi16(sum0,
-					                     reinterpret_cast<const __m128i*>(accumulation[perspectives[p]][i])[j * 2 + 0]);
-					sum1 = _mm_add_epi16(sum1,
-					                     reinterpret_cast<const __m128i*>(accumulation[perspectives[p]][i])[j * 2 + 1]);
-				}
-
-				const __m128i packedbytes = _mm_packs_epi16(sum0, sum1);
-				_mm_store_si128(&out[j],
-#if defined(USE_SSE41)
-				                _mm_max_epi8(packedbytes, kZero)
-#else  // SSE41非対応だがSSE2は使える環境
-				                _mm_subs_epi8(_mm_adds_epi8(packedbytes, k0x80s), k0x80s)
-#endif
-				);
-			}
-
-#elif defined(USE_MMX)
-			// USE_MMX を config.h では現状、有効化することがないので dead code
-			auto out = reinterpret_cast<__m64*>(&output[offset]);
-			for (IndexType j = 0; j < kNumChunks; ++j) {
-				__m64       sum0 = *(&reinterpret_cast<const __m64*>(accumulation[perspectives[p]][0])[j * 2 + 0]);
-				__m64       sum1 = *(&reinterpret_cast<const __m64*>(accumulation[perspectives[p]][0])[j * 2 + 1]);
-				const __m64 packedbytes = _mm_packs_pi16(sum0, sum1);
-				out[j]                  = _mm_subs_pi8(_mm_adds_pi8(packedbytes, k0x80s), k0x80s);
-			}
-
-#elif defined(USE_NEON)
-			const auto out = reinterpret_cast<int8x8_t*>(&output[offset]);
-			for (IndexType j = 0; j < kNumChunks; ++j) {
-				int16x8_t sum = reinterpret_cast<const int16x8_t*>(accumulation[perspectives[p]][0])[j];
-				for (IndexType i = 1; i < kRefreshTriggers.size(); ++i) {
-					sum = vaddq_s16(sum, reinterpret_cast<const int16x8_t*>(accumulation[perspectives[p]][i])[j]);
-				}
-				out[j] = vmax_s8(vqmovn_s16(sum), kZero);
-			}
-#else
-			for (IndexType j = 0; j < kHalfDimensions; ++j) {
-				BiasType sum = accumulation[perspectives[p]][0][j];
-				for (IndexType i = 1; i < kRefreshTriggers.size(); ++i) {
-					sum += accumulation[perspectives[p]][i][j];
-				}
-				output[offset + j] = static_cast<OutputType>(std::clamp<int>(sum, 0, 127));
-			}
-#endif
-		}
-#if defined(USE_MMX)
-		// USE_MMX を config.h では現状、有効化することがないので dead code
-		_mm_empty();
-#endif
-	}
+    // Number of output dimensions for one side
+    static constexpr IndexType HalfDimensions = TransformedFeatureDimensions;
 
    private:
-	// Calculate cumulative value without using difference calculation
-	// 差分計算を用いずに累積値を計算する
-	void refresh_accumulator(const Position& pos) const {
-		auto& accumulator = pos.state()->accumulator;
-		for (IndexType i = 0; i < kRefreshTriggers.size(); ++i) {
-			Features::IndexList active_indices[2];
-			RawFeatures::AppendActiveIndices(pos, kRefreshTriggers[i], active_indices);
-			for (Color perspective : {BLACK, WHITE}) {
-#if defined(VECTOR)
-				if (i == 0) {
-					std::memcpy(accumulator.accumulation[perspective][i], biases_, kHalfDimensions * sizeof(BiasType));
-				} else {
-					std::memset(accumulator.accumulation[perspective][i], 0, kHalfDimensions * sizeof(BiasType));
-				}
-				for (const auto index : active_indices[perspective]) {
-					const IndexType offset = kHalfDimensions * index;
-					auto accumulation      = reinterpret_cast<vec_t*>(&accumulator.accumulation[perspective][i][0]);
-					auto column            = reinterpret_cast<const vec_t*>(&weights_[offset]);
+    using Tiling = SIMDTiling<TransformedFeatureDimensions, HalfDimensions>;
+
+   public:
+    // Output type
+    using OutputType = TransformedFeatureType;
+
+    // Number of input/output dimensions
+    static constexpr IndexType InputDimensions  = FeatureSet::Dimensions;
+    static constexpr IndexType OutputDimensions = HalfDimensions;
+
+    // Size of forward propagation buffer
+    static constexpr std::size_t BufferSize = OutputDimensions * sizeof(OutputType);
+
+    // Store the order by which 128-bit blocks of a 1024-bit data must
+    // be permuted so that calling packus on adjacent vectors of 16-bit
+    // integers loaded from the data results in the pre-permutation order
+    static constexpr auto PackusEpi16Order = []() -> std::array<std::size_t, 8> {
 #if defined(USE_AVX512)
-					constexpr IndexType kNumChunks = kHalfDimensions / kSimdWidth;
+        // _mm512_packus_epi16 after permutation:
+        // |   0   |   2   |   4   |   6   | // Vector 0
+        // |   1   |   3   |   5   |   7   | // Vector 1
+        // | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | // Packed Result
+        return {0, 2, 4, 6, 1, 3, 5, 7};
+#elif defined(USE_AVX2)
+        // _mm256_packus_epi16 after permutation:
+        // |   0   |   2   |  |   4   |   6   | // Vector 0, 2
+        // |   1   |   3   |  |   5   |   7   | // Vector 1, 3
+        // | 0 | 1 | 2 | 3 |  | 4 | 5 | 6 | 7 | // Packed Result
+        return {0, 2, 1, 3, 4, 6, 5, 7};
 #else
-					constexpr IndexType kNumChunks = kHalfDimensions / (kSimdWidth / 2);
+        return {0, 1, 2, 3, 4, 5, 6, 7};
 #endif
-					for (IndexType j = 0; j < kNumChunks; ++j) {
-						accumulation[j] = vec_add_16(accumulation[j], column[j]);
-					}
-				}
-#else
-				if (i == 0) {
-					std::memcpy(accumulator.accumulation[perspective][i], biases_, kHalfDimensions * sizeof(BiasType));
-				} else {
-					std::memset(accumulator.accumulation[perspective][i], 0, kHalfDimensions * sizeof(BiasType));
-				}
-				for (const auto index : active_indices[perspective]) {
-					const IndexType offset = kHalfDimensions * index;
+    }();
 
-					for (IndexType j = 0; j < kHalfDimensions; ++j) {
-						accumulator.accumulation[perspective][i][j] += weights_[offset + j];
-					}
-				}
-#endif
-			}
-		}
+    static constexpr auto InversePackusEpi16Order = invert_permutation(PackusEpi16Order);
 
-		accumulator.computed_accumulation = true;
-		// Stockfishでは fc27d15(2020-09-07) にcomputed_scoreが排除されているので確認
-		accumulator.computed_score = false;
-	}
+    // Hash value embedded in the evaluation file
+    static constexpr std::uint32_t get_hash_value() {
+        return FeatureSet::HashValue ^ (OutputDimensions * 2);
+    }
 
-	// Calculate cumulative value using difference calculation
-	// 差分計算を用いて累積値を計算する
-	void update_accumulator(const Position& pos) const {
-		const auto prev_accumulator = pos.state()->previous->accumulator;
-		auto&      accumulator      = pos.state()->accumulator;
-		for (IndexType i = 0; i < kRefreshTriggers.size(); ++i) {
-			Features::IndexList removed_indices[2], added_indices[2];
-			bool                reset[2];
-			RawFeatures::AppendChangedIndices(pos, kRefreshTriggers[i], removed_indices, added_indices, reset);
-			for (Color perspective : {BLACK, WHITE}) {
+    void permute_weights() {
+        permute<16>(biases, PackusEpi16Order);
+        permute<16>(weights, PackusEpi16Order);
+    }
+
+    void unpermute_weights() {
+        permute<16>(biases, InversePackusEpi16Order);
+        permute<16>(weights, InversePackusEpi16Order);
+    }
+
+    inline void scale_weights(bool read) {
+        for (IndexType j = 0; j < InputDimensions; ++j)
+        {
+            WeightType* w = &weights[j * HalfDimensions];
+            for (IndexType i = 0; i < HalfDimensions; ++i)
+                w[i] = read ? w[i] * 2 : w[i] / 2;
+        }
+
+        for (IndexType i = 0; i < HalfDimensions; ++i)
+            biases[i] = read ? biases[i] * 2 : biases[i] / 2;
+    }
+
+    // Read network parameters
+    bool read_parameters(std::istream& stream) {
+
+        read_leb_128<BiasType>(stream, biases, HalfDimensions);
+        read_leb_128<WeightType>(stream, weights, HalfDimensions * InputDimensions);
+        read_leb_128<PSQTWeightType>(stream, psqtWeights, PSQTBuckets * InputDimensions);
+
+        permute_weights();
+        scale_weights(true);
+        return !stream.fail();
+    }
+
+    // Write network parameters
+    bool write_parameters(std::ostream& stream) {
+
+        unpermute_weights();
+        scale_weights(false);
+
+        write_leb_128<BiasType>(stream, biases, HalfDimensions);
+        write_leb_128<WeightType>(stream, weights, HalfDimensions * InputDimensions);
+        write_leb_128<PSQTWeightType>(stream, psqtWeights, PSQTBuckets * InputDimensions);
+
+        permute_weights();
+        scale_weights(true);
+        return !stream.fail();
+    }
+
+    // Convert input features
+    std::int32_t transform(const Position& pos, AccumulatorCache* cache, OutputType* output, int bucket) const {
+        update_accumulator<BLACK>(pos, cache);
+        update_accumulator<WHITE>(pos, cache);
+
+        const Color perspectives[2]  = {pos.side_to_move(), ~pos.side_to_move()};
+        const auto& psqtAccumulation = pos.state()->accumulator.psqtAccumulation;
+        const auto  psqt =
+          (psqtAccumulation[perspectives[0]][bucket] - psqtAccumulation[perspectives[1]][bucket])
+          / 2;
+
+        const auto& accumulation = pos.state()->accumulator.accumulation;
+
+        for (IndexType p = 0; p < 2; ++p)
+        {
+            const IndexType offset = (HalfDimensions / 2) * p;
+
 #if defined(VECTOR)
-#if defined(USE_AVX512)
-				constexpr IndexType kNumChunks = kHalfDimensions / kSimdWidth;
+
+            constexpr IndexType OutputChunkSize = MaxChunkSize;
+            static_assert((HalfDimensions / 2) % OutputChunkSize == 0);
+            constexpr IndexType NumOutputChunks = HalfDimensions / 2 / OutputChunkSize;
+
+            const vec_t Zero = vec_zero();
+            const vec_t One  = vec_set_16(127 * 2);
+
+            const vec_t* in0 = reinterpret_cast<const vec_t*>(&(accumulation[perspectives[p]][0]));
+            const vec_t* in1 =
+              reinterpret_cast<const vec_t*>(&(accumulation[perspectives[p]][HalfDimensions / 2]));
+            vec_t* out = reinterpret_cast<vec_t*>(output + offset);
+
+            // Per the NNUE architecture, here we want to multiply pairs of
+            // clipped elements and divide the product by 128. To do this,
+            // we can naively perform min/max operation to clip each of the
+            // four int16 vectors, mullo pairs together, then pack them into
+            // one int8 vector. However, there exists a faster way.
+
+            // The idea here is to use the implicit clipping from packus to
+            // save us two vec_max_16 instructions. This clipping works due
+            // to the fact that any int16 integer below zero will be zeroed
+            // on packus.
+
+            // Consider the case where the second element is negative.
+            // If we do standard clipping, that element will be zero, which
+            // means our pairwise product is zero. If we perform packus and
+            // remove the lower-side clip for the second element, then our
+            // product before packus will be negative, and is zeroed on pack.
+            // The two operation produce equivalent results, but the second
+            // one (using packus) saves one max operation per pair.
+
+            // But here we run into a problem: mullo does not preserve the
+            // sign of the multiplication. We can get around this by doing
+            // mulhi, which keeps the sign. But that requires an additional
+            // tweak.
+
+            // mulhi cuts off the last 16 bits of the resulting product,
+            // which is the same as performing a rightward shift of 16 bits.
+            // We can use this to our advantage. Recall that we want to
+            // divide the final product by 128, which is equivalent to a
+            // 7-bit right shift. Intuitively, if we shift the clipped
+            // value left by 9, and perform mulhi, which shifts the product
+            // right by 16 bits, then we will net a right shift of 7 bits.
+            // However, this won't work as intended. Since we clip the
+            // values to have a maximum value of 127, shifting it by 9 bits
+            // might occupy the signed bit, resulting in some positive
+            // values being interpreted as negative after the shift.
+
+            // There is a way, however, to get around this limitation. When
+            // loading the network, scale accumulator weights and biases by
+            // 2. To get the same pairwise multiplication result as before,
+            // we need to divide the product by 128 * 2 * 2 = 512, which
+            // amounts to a right shift of 9 bits. So now we only have to
+            // shift left by 7 bits, perform mulhi (shifts right by 16 bits)
+            // and net a 9 bit right shift. Since we scaled everything by
+            // two, the values are clipped at 127 * 2 = 254, which occupies
+            // 8 bits. Shifting it by 7 bits left will no longer occupy the
+            // signed bit, so we are safe.
+
+            // Note that on NEON processors, we shift left by 6 instead
+            // because the instruction "vqdmulhq_s16" also doubles the
+            // return value after the multiplication, adding an extra shift
+            // to the left by 1, so we compensate by shifting less before
+            // the multiplication.
+
+            constexpr int shift =
+    #if defined(USE_SSE2)
+              7;
+    #else
+              6;
+    #endif
+
+            for (IndexType j = 0; j < NumOutputChunks; ++j)
+            {
+                const vec_t sum0a =
+                  vec_slli_16(vec_max_16(vec_min_16(in0[j * 2 + 0], One), Zero), shift);
+                const vec_t sum0b =
+                  vec_slli_16(vec_max_16(vec_min_16(in0[j * 2 + 1], One), Zero), shift);
+                const vec_t sum1a = vec_min_16(in1[j * 2 + 0], One);
+                const vec_t sum1b = vec_min_16(in1[j * 2 + 1], One);
+
+                const vec_t pa = vec_mulhi_16(sum0a, sum1a);
+                const vec_t pb = vec_mulhi_16(sum0b, sum1b);
+
+                out[j] = vec_packus_16(pa, pb);
+            }
+
 #else
-				constexpr IndexType kNumChunks = kHalfDimensions / (kSimdWidth / 2);
+
+            for (IndexType j = 0; j < HalfDimensions / 2; ++j)
+            {
+                BiasType sum0 = accumulation[static_cast<int>(perspectives[p])][j + 0];
+                BiasType sum1 =
+                  accumulation[static_cast<int>(perspectives[p])][j + HalfDimensions / 2];
+                sum0               = std::clamp<BiasType>(sum0, 0, 127 * 2);
+                sum1               = std::clamp<BiasType>(sum1, 0, 127 * 2);
+                output[offset + j] = static_cast<OutputType>(unsigned(sum0 * sum1) / 512);
+            }
+
 #endif
-				auto accumulation              = reinterpret_cast<vec_t*>(&accumulator.accumulation[perspective][i][0]);
-#endif
-				if (reset[perspective]) {
-					if (i == 0) {
-						std::memcpy(accumulator.accumulation[perspective][i], biases_,
-						            kHalfDimensions * sizeof(BiasType));
-					} else {
-						std::memset(accumulator.accumulation[perspective][i], 0, kHalfDimensions * sizeof(BiasType));
-					}
-				} else {
-					// Difference calculation for the feature amount changed from 1 to 0
-					// 1から0に変化した特徴量に関する差分計算
-					std::memcpy(accumulator.accumulation[perspective][i], prev_accumulator.accumulation[perspective][i],
-					            kHalfDimensions * sizeof(BiasType));
-					for (const auto index : removed_indices[perspective]) {
-						const IndexType offset = kHalfDimensions * index;
+        }
+
+        return psqt;
+    }  // end of function transform()
+
+   private:
+    // Given a computed accumulator, computes the accumulator of another position.
+    template<Color Perspective, IncUpdateDirection Direction = FORWARD>
+    void update_accumulator_incremental(const Square     ksq,
+                                        StateInfo*       target_state,
+                                        const StateInfo* computed) const {
+        [[maybe_unused]] constexpr bool Forward   = Direction == FORWARD;
+        [[maybe_unused]] constexpr bool Backwards = Direction == BACKWARDS;
+        assert(computed->accumulator.computed[Perspective]);
+
+        StateInfo* next = Forward ? computed->next : computed->previous;
+
+        assert(next != nullptr);
+        assert(!next->accumulator.computed[Perspective]);
+
+        // The size must be enough to contain the largest possible update.
+        // That might depend on the feature set and generally relies on the
+        // feature set's update cost calculation to be correct and never allow
+        // updates with more added/removed features than MaxActiveDimensions.
+        // In this case, the maximum size of both feature addition and removal
+        // is 2, since we are incrementally updating one move at a time.
+        FeatureSet::IndexList removed, added;
+        if constexpr (Forward)
+            FeatureSet::append_changed_indices<Perspective>(ksq, next->dirtyPiece, removed, added);
+        else
+            FeatureSet::append_changed_indices<Perspective>(ksq, computed->dirtyPiece, added,
+                                                            removed);
+
+        if (removed.size() == 0 && added.size() == 0)
+        {
+            std::memcpy(next->accumulator.accumulation[Perspective],
+                        computed->accumulator.accumulation[Perspective],
+                        HalfDimensions * sizeof(BiasType));
+            std::memcpy(next->accumulator.psqtAccumulation[Perspective],
+                        computed->accumulator.psqtAccumulation[Perspective],
+                        PSQTBuckets * sizeof(PSQTWeightType));
+        }
+        else
+        {
+            assert(added.size() == 1 || added.size() == 2);
+            assert(removed.size() == 1 || removed.size() == 2);
+            if (Forward)
+                assert(added.size() <= removed.size());
+            else
+                assert(removed.size() <= added.size());
+
 #if defined(VECTOR)
-						auto column = reinterpret_cast<const vec_t*>(&weights_[offset]);
-						for (IndexType j = 0; j < kNumChunks; ++j) {
-							accumulation[j] = vec_sub_16(accumulation[j], column[j]);
-						}
+            auto* accIn =
+              reinterpret_cast<const vec_t*>(&computed->accumulator.accumulation[Perspective][0]);
+            auto* accOut = reinterpret_cast<vec_t*>(&next->accumulator.accumulation[Perspective][0]);
+
+            const IndexType offsetA0 = HalfDimensions * added[0];
+            auto*           columnA0 = reinterpret_cast<const vec_t*>(&weights[offsetA0]);
+            const IndexType offsetR0 = HalfDimensions * removed[0];
+            auto*           columnR0 = reinterpret_cast<const vec_t*>(&weights[offsetR0]);
+
+            if ((Forward && removed.size() == 1) || (Backwards && added.size() == 1))
+            {
+                assert(added.size() == 1 && removed.size() == 1);
+                for (IndexType i = 0; i < HalfDimensions * sizeof(WeightType) / sizeof(vec_t); ++i)
+                    accOut[i] = vec_add_16(vec_sub_16(accIn[i], columnR0[i]), columnA0[i]);
+            }
+            else if (Forward && added.size() == 1)
+            {
+                assert(removed.size() == 2);
+                const IndexType offsetR1 = HalfDimensions * removed[1];
+                auto*           columnR1 = reinterpret_cast<const vec_t*>(&weights[offsetR1]);
+
+                for (IndexType i = 0; i < HalfDimensions * sizeof(WeightType) / sizeof(vec_t); ++i)
+                    accOut[i] = vec_sub_16(vec_add_16(accIn[i], columnA0[i]),
+                                           vec_add_16(columnR0[i], columnR1[i]));
+            }
+            else if (Backwards && removed.size() == 1)
+            {
+                assert(added.size() == 2);
+                const IndexType offsetA1 = HalfDimensions * added[1];
+                auto*           columnA1 = reinterpret_cast<const vec_t*>(&weights[offsetA1]);
+
+                for (IndexType i = 0; i < HalfDimensions * sizeof(WeightType) / sizeof(vec_t); ++i)
+                    accOut[i] = vec_add_16(vec_add_16(accIn[i], columnA0[i]),
+                                           vec_sub_16(columnA1[i], columnR0[i]));
+            }
+            else
+            {
+                assert(added.size() == 2 && removed.size() == 2);
+                const IndexType offsetA1 = HalfDimensions * added[1];
+                auto*           columnA1 = reinterpret_cast<const vec_t*>(&weights[offsetA1]);
+                const IndexType offsetR1 = HalfDimensions * removed[1];
+                auto*           columnR1 = reinterpret_cast<const vec_t*>(&weights[offsetR1]);
+
+                for (IndexType i = 0; i < HalfDimensions * sizeof(WeightType) / sizeof(vec_t); ++i)
+                    accOut[i] =
+                      vec_add_16(accIn[i], vec_sub_16(vec_add_16(columnA0[i], columnA1[i]),
+                                                      vec_add_16(columnR0[i], columnR1[i])));
+            }
+
+            auto* accPsqtIn = reinterpret_cast<const psqt_vec_t*>(
+              &computed->accumulator.psqtAccumulation[Perspective][0]);
+            auto* accPsqtOut =
+              reinterpret_cast<psqt_vec_t*>(&next->accumulator.psqtAccumulation[Perspective][0]);
+
+            const IndexType offsetPsqtA0 = PSQTBuckets * added[0];
+            auto* columnPsqtA0 = reinterpret_cast<const psqt_vec_t*>(&psqtWeights[offsetPsqtA0]);
+            const IndexType offsetPsqtR0 = PSQTBuckets * removed[0];
+            auto* columnPsqtR0 = reinterpret_cast<const psqt_vec_t*>(&psqtWeights[offsetPsqtR0]);
+
+            if ((Forward && removed.size() == 1)
+                || (Backwards && added.size() == 1))  // added.size() == removed.size() == 1
+            {
+                for (std::size_t i = 0;
+                     i < PSQTBuckets * sizeof(PSQTWeightType) / sizeof(psqt_vec_t); ++i)
+                    accPsqtOut[i] = vec_add_psqt_32(vec_sub_psqt_32(accPsqtIn[i], columnPsqtR0[i]),
+                                                    columnPsqtA0[i]);
+            }
+            else if (Forward && added.size() == 1)
+            {
+                const IndexType offsetPsqtR1 = PSQTBuckets * removed[1];
+                auto*           columnPsqtR1 =
+                  reinterpret_cast<const psqt_vec_t*>(&psqtWeights[offsetPsqtR1]);
+
+                for (std::size_t i = 0;
+                     i < PSQTBuckets * sizeof(PSQTWeightType) / sizeof(psqt_vec_t); ++i)
+                    accPsqtOut[i] =
+                      vec_sub_psqt_32(vec_add_psqt_32(accPsqtIn[i], columnPsqtA0[i]),
+                                      vec_add_psqt_32(columnPsqtR0[i], columnPsqtR1[i]));
+            }
+            else if (Backwards && removed.size() == 1)
+            {
+                const IndexType offsetPsqtA1 = PSQTBuckets * added[1];
+                auto*           columnPsqtA1 =
+                  reinterpret_cast<const psqt_vec_t*>(&psqtWeights[offsetPsqtA1]);
+
+                for (std::size_t i = 0;
+                     i < PSQTBuckets * sizeof(PSQTWeightType) / sizeof(psqt_vec_t); ++i)
+                    accPsqtOut[i] =
+                      vec_add_psqt_32(vec_add_psqt_32(accPsqtIn[i], columnPsqtA0[i]),
+                                      vec_sub_psqt_32(columnPsqtA1[i], columnPsqtR0[i]));
+            }
+            else
+            {
+                const IndexType offsetPsqtA1 = PSQTBuckets * added[1];
+                auto*           columnPsqtA1 =
+                  reinterpret_cast<const psqt_vec_t*>(&psqtWeights[offsetPsqtA1]);
+                const IndexType offsetPsqtR1 = PSQTBuckets * removed[1];
+                auto*           columnPsqtR1 =
+                  reinterpret_cast<const psqt_vec_t*>(&psqtWeights[offsetPsqtR1]);
+
+                for (std::size_t i = 0;
+                     i < PSQTBuckets * sizeof(PSQTWeightType) / sizeof(psqt_vec_t); ++i)
+                    accPsqtOut[i] = vec_add_psqt_32(
+                      accPsqtIn[i],
+                      vec_sub_psqt_32(vec_add_psqt_32(columnPsqtA0[i], columnPsqtA1[i]),
+                                      vec_add_psqt_32(columnPsqtR0[i], columnPsqtR1[i])));
+            }
 #else
-						for (IndexType j = 0; j < kHalfDimensions; ++j) {
-							accumulator.accumulation[perspective][i][j] -= weights_[offset + j];
-						}
+            std::memcpy(next->accumulator.accumulation[Perspective],
+                        computed->accumulator.accumulation[Perspective],
+                        HalfDimensions * sizeof(BiasType));
+            std::memcpy(next->accumulator.psqtAccumulation[Perspective],
+                        computed->accumulator.psqtAccumulation[Perspective],
+                        PSQTBuckets * sizeof(PSQTWeightType));
+
+            // Difference calculation for the deactivated features
+            for (const auto index : removed)
+            {
+                const IndexType offset = HalfDimensions * index;
+                for (IndexType i = 0; i < HalfDimensions; ++i)
+                    next->accumulator.accumulation[Perspective][i] -= weights[offset + i];
+
+                for (std::size_t i = 0; i < PSQTBuckets; ++i)
+                    next->accumulator.psqtAccumulation[Perspective][i] -=
+                      psqtWeights[index * PSQTBuckets + i];
+            }
+
+            // Difference calculation for the activated features
+            for (const auto index : added)
+            {
+                const IndexType offset = HalfDimensions * index;
+                for (IndexType i = 0; i < HalfDimensions; ++i)
+                    next->accumulator.accumulation[Perspective][i] += weights[offset + i];
+
+                for (std::size_t i = 0; i < PSQTBuckets; ++i)
+                    next->accumulator.psqtAccumulation[Perspective][i] +=
+                      psqtWeights[index * PSQTBuckets + i];
+            }
 #endif
-					}
-				}
-				{
-					// Difference calculation for features that changed from 0 to 1
-					// 0から1に変化した特徴量に関する差分計算
-					for (const auto index : added_indices[perspective]) {
-						const IndexType offset = kHalfDimensions * index;
+        }
+
+        next->accumulator.computed[Perspective] = true;
+
+        if (next != target_state)
+            update_accumulator_incremental<Perspective, Direction>(ksq, target_state, next);
+    }
+
+
+    template<Color Perspective>
+    void update_accumulator_refresh_cache(const Position& pos, AccumulatorCache* cache) const {
+        assert(cache != nullptr);
+
+        Square                ksq   = pos.king_square<Perspective>();
+        auto&                 entry = (*cache)[ksq][Perspective];
+        FeatureSet::IndexList removed, added;
+
+        for (Color c : {BLACK, WHITE})
+        {
+            for (PieceType pt = PAWN; pt <= DRAGON; ++pt)
+            {
+				if (std::is_same_v<FeatureSet, Eval::NNUE::Features::HalfKP> && pt == KING)
+					continue;
+
+                const Piece    piece      = make_piece(c, pt);
+                const Bitboard oldBB      = entry.byColorBB[c] & entry.byTypeBB[pt];
+                const Bitboard newBB      = pos.pieces(c, pt);
+                Bitboard       toRemove   = oldBB & ~newBB;
+                Bitboard       toAdd      = newBB & ~oldBB;
+
+				while (toRemove)
+					removed.push_back(FeatureSet::make_board_index<Perspective>(toRemove.pop(), piece, ksq));
+
+				while (toAdd)
+					added.push_back(FeatureSet::make_board_index<Perspective>(toAdd.pop(), piece, ksq));
+            }
+        }
+
+		u64 oldHand  = entry.handBits;
+		u64 newHand  = pos.hand_bits();
+		u64 toRemove = oldHand & ~newHand;
+		u64 toAdd    = newHand & ~oldHand;
+
+		while (toRemove)
+			removed.push_back(FeatureSet::make_hand_index<Perspective>(pop_lsb(toRemove), ksq));
+
+		while (toAdd)
+			added.push_back(FeatureSet::make_hand_index<Perspective>(pop_lsb(toAdd), ksq));
+
+        auto& accumulator                 = pos.state()->accumulator;
+        accumulator.computed[Perspective] = true;
+
 #if defined(VECTOR)
-						auto column = reinterpret_cast<const vec_t*>(&weights_[offset]);
-						for (IndexType j = 0; j < kNumChunks; ++j) {
-							accumulation[j] = vec_add_16(accumulation[j], column[j]);
-						}
+        const bool combineLast3 = std::abs((int) removed.size() - (int) added.size()) == 1
+                               && removed.size() + added.size() > 2;
+        vec_t      acc[Tiling::NumRegs];
+        psqt_vec_t psqt[Tiling::NumPsqtRegs];
+
+        for (IndexType j = 0; j < HalfDimensions / Tiling::TileHeight; ++j)
+        {
+            auto* accTile = reinterpret_cast<vec_t*>(
+              &accumulator.accumulation[Perspective][j * Tiling::TileHeight]);
+            auto* entryTile = reinterpret_cast<vec_t*>(&entry.accumulation[j * Tiling::TileHeight]);
+
+            for (IndexType k = 0; k < Tiling::NumRegs; ++k)
+                acc[k] = entryTile[k];
+
+            std::size_t i = 0;
+            for (; i < std::min(removed.size(), added.size()) - combineLast3; ++i)
+            {
+                IndexType       indexR  = removed[i];
+                const IndexType offsetR = HalfDimensions * indexR + j * Tiling::TileHeight;
+                auto*           columnR = reinterpret_cast<const vec_t*>(&weights[offsetR]);
+                IndexType       indexA  = added[i];
+                const IndexType offsetA = HalfDimensions * indexA + j * Tiling::TileHeight;
+                auto*           columnA = reinterpret_cast<const vec_t*>(&weights[offsetA]);
+
+                for (IndexType k = 0; k < Tiling::NumRegs; ++k)
+                    acc[k] = vec_add_16(acc[k], vec_sub_16(columnA[k], columnR[k]));
+            }
+            if (combineLast3)
+            {
+                IndexType       indexR  = removed[i];
+                const IndexType offsetR = HalfDimensions * indexR + j * Tiling::TileHeight;
+                auto*           columnR = reinterpret_cast<const vec_t*>(&weights[offsetR]);
+                IndexType       indexA  = added[i];
+                const IndexType offsetA = HalfDimensions * indexA + j * Tiling::TileHeight;
+                auto*           columnA = reinterpret_cast<const vec_t*>(&weights[offsetA]);
+
+                if (removed.size() > added.size())
+                {
+                    IndexType       indexR2  = removed[i + 1];
+                    const IndexType offsetR2 = HalfDimensions * indexR2 + j * Tiling::TileHeight;
+                    auto*           columnR2 = reinterpret_cast<const vec_t*>(&weights[offsetR2]);
+
+                    for (IndexType k = 0; k < Tiling::NumRegs; ++k)
+                        acc[k] = vec_sub_16(vec_add_16(acc[k], columnA[k]),
+                                            vec_add_16(columnR[k], columnR2[k]));
+                }
+                else
+                {
+                    IndexType       indexA2  = added[i + 1];
+                    const IndexType offsetA2 = HalfDimensions * indexA2 + j * Tiling::TileHeight;
+                    auto*           columnA2 = reinterpret_cast<const vec_t*>(&weights[offsetA2]);
+
+                    for (IndexType k = 0; k < Tiling::NumRegs; ++k)
+                        acc[k] = vec_add_16(vec_sub_16(acc[k], columnR[k]),
+                                            vec_add_16(columnA[k], columnA2[k]));
+                }
+            }
+            else
+            {
+                for (; i < removed.size(); ++i)
+                {
+                    IndexType       index  = removed[i];
+                    const IndexType offset = HalfDimensions * index + j * Tiling::TileHeight;
+                    auto*           column = reinterpret_cast<const vec_t*>(&weights[offset]);
+
+                    for (IndexType k = 0; k < Tiling::NumRegs; ++k)
+                        acc[k] = vec_sub_16(acc[k], column[k]);
+                }
+                for (; i < added.size(); ++i)
+                {
+                    IndexType       index  = added[i];
+                    const IndexType offset = HalfDimensions * index + j * Tiling::TileHeight;
+                    auto*           column = reinterpret_cast<const vec_t*>(&weights[offset]);
+
+                    for (IndexType k = 0; k < Tiling::NumRegs; ++k)
+                        acc[k] = vec_add_16(acc[k], column[k]);
+                }
+            }
+
+            for (IndexType k = 0; k < Tiling::NumRegs; k++)
+                vec_store(&entryTile[k], acc[k]);
+            for (IndexType k = 0; k < Tiling::NumRegs; k++)
+                vec_store(&accTile[k], acc[k]);
+        }
+
+        for (IndexType j = 0; j < PSQTBuckets / Tiling::PsqtTileHeight; ++j)
+        {
+            auto* accTilePsqt = reinterpret_cast<psqt_vec_t*>(
+              &accumulator.psqtAccumulation[Perspective][j * Tiling::PsqtTileHeight]);
+            auto* entryTilePsqt =
+              reinterpret_cast<psqt_vec_t*>(&entry.psqtAccumulation[j * Tiling::PsqtTileHeight]);
+
+            for (std::size_t k = 0; k < Tiling::NumPsqtRegs; ++k)
+                psqt[k] = entryTilePsqt[k];
+
+            for (std::size_t i = 0; i < removed.size(); ++i)
+            {
+                IndexType       index  = removed[i];
+                const IndexType offset = PSQTBuckets * index + j * Tiling::PsqtTileHeight;
+                auto* columnPsqt       = reinterpret_cast<const psqt_vec_t*>(&psqtWeights[offset]);
+
+                for (std::size_t k = 0; k < Tiling::NumPsqtRegs; ++k)
+                    psqt[k] = vec_sub_psqt_32(psqt[k], columnPsqt[k]);
+            }
+            for (std::size_t i = 0; i < added.size(); ++i)
+            {
+                IndexType       index  = added[i];
+                const IndexType offset = PSQTBuckets * index + j * Tiling::PsqtTileHeight;
+                auto* columnPsqt       = reinterpret_cast<const psqt_vec_t*>(&psqtWeights[offset]);
+
+                for (std::size_t k = 0; k < Tiling::NumPsqtRegs; ++k)
+                    psqt[k] = vec_add_psqt_32(psqt[k], columnPsqt[k]);
+            }
+
+            for (std::size_t k = 0; k < Tiling::NumPsqtRegs; ++k)
+                vec_store_psqt(&entryTilePsqt[k], psqt[k]);
+            for (std::size_t k = 0; k < Tiling::NumPsqtRegs; ++k)
+                vec_store_psqt(&accTilePsqt[k], psqt[k]);
+        }
+
 #else
-						for (IndexType j = 0; j < kHalfDimensions; ++j) {
-							accumulator.accumulation[perspective][i][j] += weights_[offset + j];
-						}
+
+        for (const auto index : removed)
+        {
+            const IndexType offset = HalfDimensions * index;
+            for (IndexType j = 0; j < HalfDimensions; ++j)
+                entry.accumulation[j] -= weights[offset + j];
+
+            for (std::size_t k = 0; k < PSQTBuckets; ++k)
+                entry.psqtAccumulation[k] -= psqtWeights[index * PSQTBuckets + k];
+        }
+        for (const auto index : added)
+        {
+            const IndexType offset = HalfDimensions * index;
+            for (IndexType j = 0; j < HalfDimensions; ++j)
+                entry.accumulation[j] += weights[offset + j];
+
+            for (std::size_t k = 0; k < PSQTBuckets; ++k)
+                entry.psqtAccumulation[k] += psqtWeights[index * PSQTBuckets + k];
+        }
+
+        // The accumulator of the refresh entry has been updated.
+        // Now copy its content to the actual accumulator we were refreshing.
+
+        std::memcpy(accumulator.accumulation[Perspective], entry.accumulation,
+                    sizeof(BiasType) * HalfDimensions);
+
+        std::memcpy(accumulator.psqtAccumulation[Perspective], entry.psqtAccumulation,
+                    sizeof(int32_t) * PSQTBuckets);
 #endif
-					}
-				}
-			}
-		}
 
-		accumulator.computed_accumulation = true;
-		// Stockfishでは fc27d15(2020-09-07) にcomputed_scoreが排除されているので確認
-		accumulator.computed_score = false;
-	}
+        for (Color c : {BLACK, WHITE})
+            entry.byColorBB[c] = pos.pieces(c);
 
-	// parameter type
-	// パラメータの型
-	using BiasType   = std::int16_t;
-	using WeightType = std::int16_t;
+        for (PieceType pt = PAWN; pt <= DRAGON; ++pt)
+            entry.byTypeBB[pt] = pos.pieces(pt);
+        
+        entry.handBits = pos.hand_bits();
+    }
 
-	// Make the learning class a friend
-	// 学習用クラスをfriendにする
-	friend class Trainer<FeatureTransformer>;
 
-	// parameter
-	// パラメータ
-	alignas(kCacheLineSize) BiasType biases_[kHalfDimensions];
-	alignas(kCacheLineSize) WeightType weights_[kHalfDimensions * kInputDimensions];
-};  // class FeatureTransformer
+    template<Color Perspective>
+    void update_accumulator(const Position& pos, AccumulatorCache* cache) const {
+        StateInfo* st = pos.state();
+        if (st->accumulator.computed[Perspective])
+            return;  // nothing to do
+
+        // Look for a usable already computed accumulator of an earlier position.
+        // Always try to do an incremental update as most accumulators will be reusable.
+        do
+        {
+            if (FeatureSet::requires_refresh(st, Perspective) || !st->previous
+                || st->previous->next != st)
+            {
+                // compute accumulator from scratch for this position
+                update_accumulator_refresh_cache<Perspective>(pos, cache);
+                if (st != pos.state())
+                    // when computing an accumulator from scratch we can use it to
+                    // efficiently compute the accumulator backwards, until we get to a king
+                    // move. We expect that we will need these accumulators later anyway, so
+                    // computing them now will save some work.
+                    update_accumulator_incremental<Perspective, BACKWARDS>(
+                      pos.king_square<Perspective>(), st, pos.state());
+                return;
+            }
+            st = st->previous;
+        } while (!st->accumulator.computed[Perspective]);
+
+        // Start from the oldest computed accumulator, update all the
+        // accumulators up to the current position.
+        update_accumulator_incremental<Perspective>(pos.king_square<Perspective>(), pos.state(), st);
+    }
+
+    friend struct AccumulatorCache;
+
+    alignas(CacheLineSize) BiasType biases[HalfDimensions];
+    alignas(CacheLineSize) WeightType weights[HalfDimensions * InputDimensions];
+    alignas(CacheLineSize) PSQTWeightType psqtWeights[InputDimensions * PSQTBuckets];
+};
 
 }  // namespace Eval::NNUE
-
-#endif  // defined(EVAL_NNUE)
 
 #endif  // #ifndef NNUE_FEATURE_TRANSFORMER_H_INCLUDED

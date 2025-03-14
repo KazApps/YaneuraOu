@@ -1,63 +1,52 @@
-﻿// header used in NNUE evaluation function
-// NNUE評価関数で用いるheader
+﻿/*
+  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
-#ifndef NNUE_EVALUATE_NNUE_H_INCLUDED
-#define NNUE_EVALUATE_NNUE_H_INCLUDED
+  Stockfish is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-#include "../../config.h"
+  Stockfish is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-#if defined(EVAL_NNUE)
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
-#include "nnue_feature_transformer.h"
-#include "nnue_architecture.h"
-//#include "../../misc.h"
-#include "../../memory.h"
+#ifndef NNUE_EVALUATE_H_INCLUDED
+#define NNUE_EVALUATE_H_INCLUDED
 
-// 評価関数のソースコードへの埋め込みをする時は、EVAL_EMBEDDINGをdefineして、
-// ⇓この2つのシンボルを正しく定義するembedded_nnue.cppを書けば良い。
-#if defined(EVAL_EMBEDDING)
-	extern const char*  gEmbeddedNNUEData;
-	extern const size_t gEmbeddedNNUESize;
-#else
-	const char   gEmbeddedNNUEData[1] = {0x0};
-	const size_t gEmbeddedNNUESize = 1;
-#endif
+#include <string>
 
-namespace Eval::NNUE {
+#include "../../types.h"
+#include "network.h"
 
-	// Hash value of evaluation function structure
-	// 評価関数の構造のハッシュ値
-	constexpr std::uint32_t kHashValue =
-	    FeatureTransformer::GetHashValue() ^ Network::GetHashValue();
+namespace Eval {
 
-	// 入力特徴量変換器
-	extern LargePagePtr<FeatureTransformer> feature_transformer;
+// The default net name MUST follow the format nn-[SHA256 first 12 digits].nnue
+// for the build process (profile-build and fishtest) to work. Do not change the
+// name of the macro or the location where this macro is defined, as it is used
+// in the Makefile/Fishtest.
+#define EvalFileDefaultName "nn.nnue"
 
-	// 評価関数
-	extern AlignedPtr<Network> network;
+namespace NNUE {
 
-	// 評価関数ファイル名
-	extern const char* const kFileName;
+extern Network network;
 
-	// 評価関数の構造を表す文字列を取得する
-	std::string GetArchitectureString();
+}
 
-	// ヘッダを読み込む
-	Tools::Result ReadHeader(std::istream& stream,
-	    std::uint32_t* hash_value, std::string* architecture);
+void init();
+void load_eval();
 
-	// ヘッダを書き込む
-	bool WriteHeader(std::ostream& stream,
-	    std::uint32_t hash_value, const std::string& architecture);
+std::string trace(Position& pos);
 
-	// 評価関数パラメータを読み込む
-	Tools::Result ReadParameters(std::istream& stream);
+Value evaluate(const Position&               pos,
+               Eval::NNUE::AccumulatorCache& cache,
+               int                           optimism);
 
-	// 評価関数パラメータを書き込む
-	bool WriteParameters(std::ostream& stream);
+}  // namespace Eval
 
-}  // namespace Eval::NNUE
-
-#endif  // defined(EVAL_NNUE)
-
-#endif // #ifndef NNUE_EVALUATE_NNUE_H_INCLUDED
+#endif  // #ifndef NNUE_EVALUATE_H_INCLUDED

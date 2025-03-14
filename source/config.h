@@ -113,6 +113,8 @@
 //  評価関数関連の設定
 // ---------------------
 
+// 埋め込み評価関数の無効化。
+#define NNUE_EMBEDDING_OFF
 
 // 評価関数を使うオプション。
 // これを定義するなら、Eval::init() , Eval::compute_eval() , Eval::print_eval_stat()などを

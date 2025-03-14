@@ -1,4 +1,4 @@
-﻿/*
+/*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
@@ -18,8 +18,8 @@
 
 //Definition of input features HalfKP of NNUE evaluation function
 
-#ifndef NNUE_FEATURES_HALF_KP_H_INCLUDED
-#define NNUE_FEATURES_HALF_KP_H_INCLUDED
+#ifndef NNUE_FEATURES_HALF_KA_V2_HM_H_INCLUDED
+#define NNUE_FEATURES_HALF_KA_V2_HM_H_INCLUDED
 
 #include <cstdint>
 
@@ -29,7 +29,9 @@
 
 namespace Eval::NNUE::Features {
 
-class HalfKP {
+// Feature HalfKAv2_hm: Combination of the position of own king and the
+// position of pieces. Position mirrored such that king is always on e..h files.
+class HalfKAv2_hm {
 
     // Unique number for each piece type on each square
     enum {
@@ -60,32 +62,55 @@ class HalfKP {
         PS_W_HORSE      = 23 * SQ_NB,
         PS_B_DRAGON     = 24 * SQ_NB,
         PS_W_DRAGON     = 25 * SQ_NB,
-        PS_NB           = 26 * SQ_NB
+        PS_KING         = 26 * SQ_NB,
+        PS_NB           = 27 * SQ_NB
     };
 
     static constexpr IndexType PieceSquareIndex[COLOR_NB][PIECE_NB] = {
       // Convention: B - us, W - them
       // Viewed from other side, B and W are reversed
-      { PS_NONE, PS_B_PAWN, PS_B_LANCE, PS_B_KNIGHT, PS_B_SILVER, PS_B_BISHOP, PS_B_ROOK, PS_B_GOLD, PS_NONE, PS_B_PRO_PAWN, PS_B_PRO_LANCE, PS_B_PRO_KNIGHT, PS_B_PRO_SILVER, PS_B_HORSE, PS_B_DRAGON, PS_NONE,
-        PS_NONE, PS_W_PAWN, PS_W_LANCE, PS_W_KNIGHT, PS_W_SILVER, PS_W_BISHOP, PS_W_ROOK, PS_W_GOLD, PS_NONE, PS_W_PRO_PAWN, PS_W_PRO_LANCE, PS_W_PRO_KNIGHT, PS_W_PRO_SILVER, PS_W_HORSE, PS_W_DRAGON, PS_NONE },
-      { PS_NONE, PS_W_PAWN, PS_W_LANCE, PS_W_KNIGHT, PS_W_SILVER, PS_W_BISHOP, PS_W_ROOK, PS_W_GOLD, PS_NONE, PS_W_PRO_PAWN, PS_W_PRO_LANCE, PS_W_PRO_KNIGHT, PS_W_PRO_SILVER, PS_W_HORSE, PS_W_DRAGON, PS_NONE,
-        PS_NONE, PS_B_PAWN, PS_B_LANCE, PS_B_KNIGHT, PS_B_SILVER, PS_B_BISHOP, PS_B_ROOK, PS_B_GOLD, PS_NONE, PS_B_PRO_PAWN, PS_B_PRO_LANCE, PS_B_PRO_KNIGHT, PS_B_PRO_SILVER, PS_B_HORSE, PS_B_DRAGON, PS_NONE }};
-    
-    static constexpr IndexType NumHands = 64;
-    static constexpr IndexType NumPlanes = static_cast<IndexType>(PS_NB) + NumHands + 1;
+      { PS_NONE, PS_B_PAWN, PS_B_LANCE, PS_B_KNIGHT, PS_B_SILVER, PS_B_BISHOP, PS_B_ROOK, PS_B_GOLD, PS_KING, PS_B_PRO_PAWN, PS_B_PRO_LANCE, PS_B_PRO_KNIGHT, PS_B_PRO_SILVER, PS_B_HORSE, PS_B_DRAGON, PS_NONE,
+        PS_NONE, PS_W_PAWN, PS_W_LANCE, PS_W_KNIGHT, PS_W_SILVER, PS_W_BISHOP, PS_W_ROOK, PS_W_GOLD, PS_KING, PS_W_PRO_PAWN, PS_W_PRO_LANCE, PS_W_PRO_KNIGHT, PS_W_PRO_SILVER, PS_W_HORSE, PS_W_DRAGON, PS_NONE },
+      { PS_NONE, PS_W_PAWN, PS_W_LANCE, PS_W_KNIGHT, PS_W_SILVER, PS_W_BISHOP, PS_W_ROOK, PS_W_GOLD, PS_KING, PS_W_PRO_PAWN, PS_W_PRO_LANCE, PS_W_PRO_KNIGHT, PS_W_PRO_SILVER, PS_W_HORSE, PS_W_DRAGON, PS_NONE,
+        PS_NONE, PS_B_PAWN, PS_B_LANCE, PS_B_KNIGHT, PS_B_SILVER, PS_B_BISHOP, PS_B_ROOK, PS_B_GOLD, PS_KING, PS_B_PRO_PAWN, PS_B_PRO_LANCE, PS_B_PRO_KNIGHT, PS_B_PRO_SILVER, PS_B_HORSE, PS_B_DRAGON, PS_NONE }};
 
    public:
     // Feature name
-    static constexpr const char* Name = "HalfKP(Friend)";
+    static constexpr const char* Name = "HalfKAv2_hm(Friend)";
 
     // Hash value embedded in the evaluation file
-    static constexpr std::uint32_t HashValue = 0x5d69d5b8u;
+    static constexpr std::uint32_t HashValue = 0x7f234cb8u;
 
     // Number of feature dimensions
-    static constexpr IndexType Dimensions = static_cast<IndexType>(SQ_NB) * NumPlanes;
+    static constexpr IndexType Dimensions =
+      static_cast<IndexType>(FILE_NB) * 5 * (static_cast<IndexType>(PS_NB) + 64);
+
+#define B(v) (v * (PS_NB + 64))
+    // clang-format off
+    static constexpr int KingBuckets[COLOR_NB][SQ_NB] = {
+      { B( 0), B( 1), B( 2), B( 3), B( 4), B( 5), B( 6), B( 7), B( 8),
+        B( 9), B(10), B(11), B(12), B(13), B(14), B(15), B(16), B(17),
+        B(18), B(19), B(20), B(21), B(22), B(23), B(24), B(25), B(26),
+        B(27), B(28), B(29), B(30), B(31), B(32), B(33), B(34), B(35),
+        B(36), B(37), B(38), B(39), B(40), B(41), B(42), B(43), B(44),
+        B(27), B(28), B(29), B(30), B(31), B(32), B(33), B(34), B(35),
+        B(18), B(19), B(20), B(21), B(22), B(23), B(24), B(25), B(26),
+        B( 9), B(10), B(11), B(12), B(13), B(14), B(15), B(16), B(17),
+        B( 0), B( 1), B( 2), B( 3), B( 4), B( 5), B( 6), B( 7), B( 8) },
+      { B( 8), B( 7), B( 6), B( 5), B( 4), B( 3), B( 2), B( 1), B( 0),
+        B(17), B(16), B(15), B(14), B(13), B(12), B(11), B(10), B( 9),
+        B(26), B(25), B(24), B(23), B(22), B(21), B(20), B(19), B(18),
+        B(35), B(34), B(33), B(32), B(31), B(30), B(29), B(28), B(27),
+        B(44), B(43), B(42), B(41), B(40), B(39), B(38), B(37), B(36),
+        B(35), B(34), B(33), B(32), B(31), B(30), B(29), B(28), B(27),
+        B(26), B(25), B(24), B(23), B(22), B(21), B(20), B(19), B(18),
+        B(17), B(16), B(15), B(14), B(13), B(12), B(11), B(10), B( 9),
+        B( 8), B( 7), B( 6), B( 5), B( 4), B( 3), B( 2), B( 1), B( 0) }
+    };
+    // clang-format on
 
     // Maximum number of simultaneously active features.
-    static constexpr IndexType MaxActiveDimensions = 38;
+    static constexpr IndexType MaxActiveDimensions = 40;
     using IndexList                                = ValueList<IndexType, MaxActiveDimensions>;
 
     // Index of a feature for a given king position and another piece on some square
@@ -111,4 +136,4 @@ class HalfKP {
 
 }  // namespace Eval::NNUE::Features
 
-#endif  // #ifndef NNUE_FEATURES_HALF_KP_H_INCLUDED
+#endif  // #ifndef NNUE_FEATURES_HALF_KA_V2_HM_H_INCLUDED

@@ -1,5 +1,23 @@
-#ifndef SIMD_H_INCLUDED
-#define SIMD_H_INCLUDED
+/*
+  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+
+  Stockfish is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  Stockfish is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#ifndef STOCKFISH_SIMD_H_INCLUDED
+#define STOCKFISH_SIMD_H_INCLUDED
 
 #if defined(USE_AVX2)
     #include <immintrin.h>
@@ -17,10 +35,7 @@
     #include <arm_neon.h>
 #endif
 
-
-namespace Simd
-{
-
+namespace Simd {
 
 #if defined(USE_AVX512)
 
@@ -29,13 +44,14 @@ namespace Simd
 }
 
 [[maybe_unused]] static void m512_add_dpbusd_epi32(__m512i& acc, __m512i a, __m512i b) {
-#if defined(USE_VNNI)
+
+    #if defined(USE_VNNI)
     acc = _mm512_dpbusd_epi32(acc, a, b);
-#else
+    #else
     __m512i product0 = _mm512_maddubs_epi16(a, b);
     product0         = _mm512_madd_epi16(product0, _mm512_set1_epi16(1));
     acc              = _mm512_add_epi32(acc, product0);
-#endif
+    #endif
 }
 
 #endif
@@ -50,13 +66,14 @@ namespace Simd
 }
 
 [[maybe_unused]] static void m256_add_dpbusd_epi32(__m256i& acc, __m256i a, __m256i b) {
-#if defined(USE_VNNI)
+
+    #if defined(USE_VNNI)
     acc = _mm256_dpbusd_epi32(acc, a, b);
-#else
+    #else
     __m256i product0 = _mm256_maddubs_epi16(a, b);
     product0         = _mm256_madd_epi16(product0, _mm256_set1_epi16(1));
     acc              = _mm256_add_epi32(acc, product0);
-#endif
+    #endif
 }
 
 #endif
@@ -70,6 +87,7 @@ namespace Simd
 }
 
 [[maybe_unused]] static void m128_add_dpbusd_epi32(__m128i& acc, __m128i a, __m128i b) {
+
     __m128i product0 = _mm_maddubs_epi16(a, b);
     product0         = _mm_madd_epi16(product0, _mm_set1_epi16(1));
     acc              = _mm_add_epi32(acc, product0);
@@ -79,7 +97,9 @@ namespace Simd
 
 #if defined(USE_NEON_DOTPROD)
 
-[[maybe_unused]] static void dotprod_m128_add_dpbusd_epi32(int32x4_t& acc, int8x16_t a, int8x16_t b) {
+[[maybe_unused]] static void
+dotprod_m128_add_dpbusd_epi32(int32x4_t& acc, int8x16_t a, int8x16_t b) {
+
     acc = vdotq_s32(acc, a, b);
 }
 #endif
@@ -108,11 +128,7 @@ namespace Simd
     int16x8_t sum      = vpaddq_s16(product0, product1);
     acc                = vpadalq_s16(acc, sum);
 }
-
 #endif
+}
 
-
-} // namespace Simd 
-
-
-#endif // ifndef SIMD_H_INCLUDED
+#endif  // STOCKFISH_SIMD_H_INCLUDED

@@ -163,16 +163,16 @@
     <ClInclude Include="eval\nnue\nnue_feature_transformer.h">
       <Filter>リソース ファイル\eval\nnue</Filter>
     </ClInclude>
-    <ClInclude Include="eval\nnue\nnue_test_command.h">
+    <ClInclude Include="eval\nnue\nnue_misc.h">
       <Filter>リソース ファイル\eval\nnue</Filter>
     </ClInclude>
-    <ClInclude Include="eval\nnue\features\feature_set.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\features\features_common.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
+    <ClInclude Include="eval\nnue\network.h">
+      <Filter>リソース ファイル\eval\nnue</Filter>
     </ClInclude>
     <ClInclude Include="eval\nnue\features\half_kp.h">
+      <Filter>リソース ファイル\eval\nnue\features</Filter>
+    </ClInclude>
+    <ClInclude Include="eval\nnue\features\half_ka_v2_hm.h">
       <Filter>リソース ファイル\eval\nnue\features</Filter>
     </ClInclude>
     <ClInclude Include="eval\nnue\features\half_relative_kp.h">
@@ -226,12 +226,6 @@
     <ClInclude Include="eval\nnue\trainer\trainer_sum.h">
       <Filter>リソース ファイル\eval\nnue\trainer</Filter>
     </ClInclude>
-    <ClInclude Include="eval\nnue\architectures\halfkp_256x2-32-32.h">
-      <Filter>リソース ファイル\eval\nnue\architectures</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\architectures\kp_256x2-32-32.h">
-      <Filter>リソース ファイル\eval\nnue\architectures</Filter>
-    </ClInclude>
     <ClInclude Include="eval\nnue\trainer\features\factorizer.h">
       <Filter>リソース ファイル\eval\nnue\trainer\features</Filter>
     </ClInclude>
@@ -264,15 +258,6 @@
     </ClInclude>
     <ClInclude Include="thread_win32_osx.h">
       <Filter>リソース ファイル</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\features\half_kpe9.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\features\pe9.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\architectures\halfkpe9_256x2-32-32.h">
-      <Filter>リソース ファイル\eval\nnue\architectures</Filter>
     </ClInclude>
     <ClInclude Include="eval\nnue\trainer\features\factorizer_half_kpe9.h">
       <Filter>リソース ファイル\eval\nnue\trainer\features</Filter>
@@ -325,12 +310,6 @@
     <ClInclude Include="testcmd\unit_test.h">
       <Filter>リソース ファイル\testcmd</Filter>
     </ClInclude>
-    <ClInclude Include="eval\nnue\features\half_kp_vm.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\architectures\halfkpvm_256x2-32-32.h">
-      <Filter>リソース ファイル\eval\nnue\architectures</Filter>
-    </ClInclude>
     <ClInclude Include="engine\dlshogi-engine\dlshogi_min.h">
       <Filter>リソース ファイル\engine\dlshogi-engine</Filter>
     </ClInclude>
@@ -349,17 +328,8 @@
     <ClInclude Include="engine\yo-cluster\ClusterObserver.h">
       <Filter>リソース ファイル\engine\yo-cluster</Filter>
     </ClInclude>
-    <ClInclude Include="eval\nnue\architectures\halfkp_512x2-16-32.h">
-      <Filter>リソース ファイル\eval\nnue\architectures</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\architectures\halfkp_1024x2-8-32.h">
-      <Filter>リソース ファイル\eval\nnue\architectures</Filter>
-    </ClInclude>
     <ClInclude Include="engine\dlshogi-engine\PvMateSearch.h">
       <Filter>リソース ファイル\engine\dlshogi-engine</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\architectures\halfkp_1024x2-8-64.h">
-      <Filter>リソース ファイル\eval\nnue\architectures</Filter>
     </ClInclude>
     <ClInclude Include="memory.h">
       <Filter>リソース ファイル</Filter>
@@ -450,10 +420,16 @@
     <ClCompile Include="eval\nnue\evaluate_nnue_learner.cpp">
       <Filter>リソース ファイル\eval\nnue</Filter>
     </ClCompile>
-    <ClCompile Include="eval\nnue\nnue_test_command.cpp">
+    <ClCompile Include="eval\nnue\nnue_misc.cpp">
+      <Filter>リソース ファイル\eval\nnue</Filter>
+    </ClCompile>
+    <ClCompile Include="eval\nnue\network.cpp">
       <Filter>リソース ファイル\eval\nnue</Filter>
     </ClCompile>
     <ClCompile Include="eval\nnue\features\half_kp.cpp">
+      <Filter>リソース ファイル\eval\nnue\features</Filter>
+    </ClCompile>
+    <ClCompile Include="eval\nnue\features\half_ka_v2_hm.cpp">
       <Filter>リソース ファイル\eval\nnue\features</Filter>
     </ClCompile>
     <ClCompile Include="eval\nnue\features\half_relative_kp.cpp">
@@ -566,9 +542,6 @@
     </ClCompile>
     <ClCompile Include="testcmd\unit_test.cpp">
       <Filter>リソース ファイル\testcmd</Filter>
-    </ClCompile>
-    <ClCompile Include="eval\nnue\features\half_kp_vm.cpp">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
     </ClCompile>
     <ClCompile Include="engine\yo-cluster\ClusterObserver.cpp">
       <Filter>リソース ファイル\engine\yo-cluster</Filter>

@@ -97,6 +97,10 @@ public:
 	explicit Thread(size_t n);
 	virtual ~Thread();
 
+#if defined(EVAL_NNUE)
+	Value evaluate(const Position& pos);
+#endif
+
 	// slaveは、main threadから
 	//   for(auto th : Threads) th->start_searching();
 	// のようにされるとこの関数が呼び出される。
@@ -203,6 +207,11 @@ public:
 	PawnHistory pawnHistory;
 #endif
 
+#endif
+
+#if defined(EVAL_NNUE)
+	Eval::NNUE::AccumulatorCache refreshTable;
+	Value optimism[COLOR_NB];
 #endif
 
 	// Stockfish10ではスレッドごとにcontemptを保持するように変わった。

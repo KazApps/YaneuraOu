@@ -5,6 +5,7 @@
 #include "thread.h"
 #include "usi.h"
 #include "tt.h"
+#include "eval/nnue/evaluate_nnue.h"
 
 ThreadPool Threads;		// Global object
 
@@ -160,7 +161,7 @@ void ThreadPool::set(size_t requested)
 
 #if !defined(__EMSCRIPTEN__)
 		while (threads.size() > 0)
-			delete threads.back(), threads.pop_back();
+			(delete threads.back(), threads.pop_back());
 #else
 		// yaneuraou.wasm
 		while (threads.size() > requested)
@@ -197,6 +198,14 @@ void ThreadPool::set(size_t requested)
 #endif
 
 }
+
+#if defined(EVAL_NNUE)
+Value Thread::evaluate(const Position& pos) {
+	auto v = Eval::evaluate(pos, refreshTable, optimism[pos.side_to_move()]);
+
+	return v;
+}
+#endif
 
 // ThreadPool::clear()は、threadPoolのデータを初期値に設定する。
 void ThreadPool::clear() {

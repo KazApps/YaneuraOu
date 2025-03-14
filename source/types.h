@@ -243,6 +243,12 @@ constexpr Square Mir(Square sq) { return File(8-(int)file_of(sq)) | rank_of(sq);
 // 盤面を180度回転させた時の升を返す。
 constexpr Square Flip(Square sq) { return (Square)(SQ_NB - sq - 1); }
 
+// 盤面を垂直方向にflipさせたときの升を返す。
+constexpr Square vertical_flip(Square sq) { return file_of(sq) | Rank(8 - rank_of(sq)); }
+
+// 盤面を水平方向にflipさせたときの升を返す。
+constexpr Square horizontal_flip(Square sq) { return File(8 - file_of(sq)) | rank_of(sq); }
+
 // Squareを綺麗に出力する(USI形式ではない)
 // "PRETTY_JP"をdefineしていれば、日本語文字での表示になる。例 → ８八
 // "PRETTY_JP"をdefineしていなければ、数字のみの表示になる。例 → 88

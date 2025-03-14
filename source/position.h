@@ -84,6 +84,7 @@ struct StateInfo {
 	// 2)は、このnodeのEvalSum sum(これはdo_move_null()でコピーされている)から
 	//   計算出来るから問題ない。
 	StateInfo* previous;
+	StateInfo* next;
 
 	// 動かすと手番側の王に対して空き王手になるかも知れない駒の候補
 	// チェスの場合、駒がほとんどが大駒なのでこれらを動かすと必ず開き王手となる。
@@ -141,22 +142,17 @@ struct StateInfo {
 
 #endif
 
-#if defined(EVAL_NNUE)
-	Eval::NNUE::Accumulator accumulator;
-#endif
-
-#if defined (USE_EVAL_LIST)
-	// 評価値の差分計算の管理用
-	Eval::DirtyPiece dirtyPiece;
-#endif
-
-
 #if defined(KEEP_LAST_MOVE)
 	// 直前の指し手。デバッグ時などにおいてその局面までの手順を表示出来ると便利なことがあるのでそのための機能
 	Move lastMove;
 
 	// lastMoveで移動させた駒(先後の区別なし)
 	PieceType lastMovedPieceType;
+#endif
+
+#if defined(EVAL_NNUE)
+	Eval::DirtyPiece dirtyPiece;
+	Eval::NNUE::Accumulator accumulator;
 #endif
 
 };
@@ -301,6 +297,83 @@ public:
 	// ↑のtemplate版
 	template <Color C>
 	Hand hand_of() const { ASSERT_LV3(is_ok(C));  return hand[C]; }
+
+	// 持ち駒を1枚追加し、そのbitを返す。
+	// ただし、持ち駒が12枚以上ある場合は-1を返す。
+	template <Color C>
+	int add_to_hand(PieceType pt) {
+		int hand_cnt = hand_count(hand[C], pt);
+		add_hand(hand[C], pt);
+
+		if (hand_cnt < 12) {
+			int bit = hand_bit_pos(make_piece(C, pt), hand_cnt);
+			handBits |= 1ULL << bit;
+
+			return bit;
+		}
+
+		return -1;
+	}
+
+	// 持ち駒をcnt枚追加する。
+	template <Color C>
+	void add_to_hand(PieceType pt, int cnt) {
+		int hand_cnt = hand_count(hand[C], pt);
+        int added_cnt = std::min(hand_cnt + cnt, 12);
+		add_hand(hand[C], pt, cnt);
+
+		for (int i = hand_cnt; i < added_cnt; ++i)
+			handBits |= 1ULL << hand_bit_pos(make_piece(C, pt), i);
+	}
+
+	int add_to_hand(Color c, PieceType pt) {
+		return c == BLACK ? add_to_hand<BLACK>(pt) : add_to_hand<WHITE>(pt);
+	}
+
+	void add_to_hand(Color c, PieceType pt, int cnt) {
+		c == BLACK ? add_to_hand<BLACK>(pt, cnt) : add_to_hand<WHITE>(pt, cnt);
+	}
+
+	// 持ち駒を1枚減らし、そのbitを返す。
+	// ただし、持ち駒が12枚より多い場合は-1を返す。
+	template <Color C>
+	int sub_from_hand(PieceType pt) {
+		ASSERT_LV3(hand_count(hand[C], pt) > 0);
+
+		int hand_cnt = hand_count(hand[C], pt);
+        int substracted_cnt = hand_cnt - 1;
+		sub_hand(hand[C], pt);
+
+		if (substracted_cnt < 12) {
+			int bit = hand_bit_pos(make_piece(C, pt), substracted_cnt);
+			handBits &= ~(1ULL << bit);
+
+			return bit;
+		}
+
+		return -1;
+	}
+
+	// 持ち駒をcnt枚減らす。
+	template <Color C>
+	void sub_from_hand(PieceType pt, int cnt) {
+		ASSERT_LV3(hand_count(hand[C], pt) >= cnt);
+
+		int hand_cnt = std::min(hand_count(hand[C], pt), 12);
+        int substracted_cnt = hand_cnt - cnt;
+		sub_hand(hand[C], pt, cnt);
+
+		for (int i = substracted_cnt; i < hand_cnt; ++i)
+			handBits &= ~(1ULL << hand_bit_pos(make_piece(C, pt), i));
+	}
+
+	int sub_from_hand(Color c, PieceType pt) {
+		return c == BLACK ? sub_from_hand<BLACK>(pt) : sub_from_hand<WHITE>(pt);
+	}
+
+	void sub_from_hand(Color c, PieceType pt, int cnt) {
+		c == BLACK ? sub_from_hand<BLACK>(pt, cnt) : sub_from_hand<WHITE>(pt, cnt);
+	}
 
 	// c側の玉の位置を返す。
 	// Stockfishには
@@ -578,13 +651,6 @@ public:
 	// たとえば、state()->capturedPieceであれば、前局面で捕獲された駒が格納されている。
 	StateInfo* state() const { return st; }
 
-	// --- Evaluation
-
-#if defined(USE_EVAL_LIST)
-	// 評価関数で使うための、どの駒番号の駒がどこにあるかなどの情報。
-	const Eval::EvalList* eval_list() const { return &evalList; }
-#endif
-
 #if defined (USE_SEE)
 	// 指し手mのsee(Static Exchange Evaluation : 静的取り合い評価)において
 	// v(しきい値)以上になるかどうかを返す。
@@ -747,6 +813,9 @@ public:
 	static std::string sfen_from_rawdata(Piece board[81], Hand hands[2], Color turn, int gamePly);
 #endif
 
+	// 持ち駒のbit表現。
+	u64 hand_bits() const { return handBits; }
+
 	// -- 利き
 #if defined(LONG_EFFECT_LIBRARY)
 
@@ -811,6 +880,48 @@ private:
 		sideToMove == BLACK ? set_check_info<doNullMove, BLACK>() : set_check_info<doNullMove, WHITE>();
 	}
 
+	constexpr int hand_bit_pos(Piece pc, int cnt) const {
+		constexpr std::array<int, PIECE_NB> table = {
+			-1, // NO_PIECE
+
+			0,  // B_PAWN
+			12, // B_LANCE
+			16, // B_KNIGHT
+			20, // B_SILVER
+			28, // B_BISHOP
+			30, // B_ROOK
+			24, // B_GOLD
+			-1, // B_KING
+			-1, // B_PRO_PAWN
+			-1, // B_PRO_LANCE
+			-1, // B_PRO_KNIGHT
+			-1, // B_PRO_SILVER
+			-1, // B_HORSE
+			-1, // B_DRAGON
+			-1, // B_GOLDS
+
+			-1, // skip
+
+			32, // W_PAWN
+			44, // W_LANCE
+			48, // W_KNIGHT
+			52, // W_SILVER
+			60, // W_BISHOP
+			62, // W_ROOK
+			56, // W_GOLD
+			-1, // W_KING
+			-1, // W_PRO_PAWN
+			-1, // W_PRO_LANCE
+			-1, // W_PRO_KNIGHT
+			-1, // W_PRO_SILVER
+			-1, // W_HORSE
+			-1, // W_DRAGON
+			-1, // W_GOLDS
+		};
+
+		return table[pc] + cnt;
+	}
+
 	// do_move()の先後分けたもの。内部的に呼び出される。
 	template <Color Us> void do_move_impl(Move m, StateInfo& st, bool givesCheck);
 
@@ -837,7 +948,6 @@ private:
 	// 駒を配置して、内部的に保持しているBitboardなどを更新する。
 	// 注意1 : kingを配置したときには、このクラスのkingSqaure[]を更新しないといけないが、
 	// この関数のなかでは行っていないので呼び出し側で更新すること。
-	// 注意2 : evalListのほうの更新もこの関数のなかでは行っていないので必要ならば呼び出し側で更新すること。
 	// 例) 
 	// if (type_of(pc) == KING)
 	//		kingSquare[color_of(pc)] = sq;
@@ -859,7 +969,7 @@ private:
 	// 更新してくれないので、自前で更新するか、一連の処理のあとにこの関数を呼び出す必要がある。
 	void update_kingSquare();
 
-#if defined (USE_EVAL_LIST)
+#if defined (USE_EVAL_LIST) && 0
 	// --- 盤面を更新するときにEvalListの更新のために必要なヘルパー関数
 
 	// c側の手駒ptの最後の1枚のBonaPiece番号を返す
@@ -894,6 +1004,7 @@ private:
 
 	// 手駒
 	Hand hand[COLOR_NB];
+	u64 handBits = 0;
 
 	// 手番
 	Color sideToMove;
@@ -915,11 +1026,6 @@ private:
 
 	// set_max_repetition_ply()で設定される、千日手の最大遡り手数
 	static int max_repetition_ply /* = 16 */;
-
-#if defined(USE_EVAL_LIST)
-	// 評価関数で用いる駒のリスト
-	Eval::EvalList evalList;
-#endif
 };
 
 template<typename ...PieceTypes>
