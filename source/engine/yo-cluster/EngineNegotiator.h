@@ -142,6 +142,7 @@ namespace YaneuraouTheCluster
 		EngineNegotiator();
 		EngineNegotiator& operator=(EngineNegotiator& rhs) { this->ptr = std::move(rhs.ptr); return *this; } // copy constructor
  		EngineNegotiator(EngineNegotiator&&) = default; // default move constructor
+		EngineNegotiator& operator=(EngineNegotiator&&) = default; // default move assignment operator
 		virtual ~EngineNegotiator(){}
 
 		// --- エンジンの状態を判定するhelper property

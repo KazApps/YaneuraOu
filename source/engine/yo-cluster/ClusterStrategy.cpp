@@ -383,7 +383,7 @@ namespace YaneuraouTheCluster
 				return ;
 
 			// この指し手で一手進めた局面のsfen文字列を作る。
-			sfen = concat_sfen(sfen , to_usi_string(snlist[0].move));
+			sfen = concat_sfen(sfen , to_usi_string(snlist[0]));
 		}
 
 		// ここでponderする局面作る。
@@ -397,7 +397,7 @@ namespace YaneuraouTheCluster
 			if (!snlist.size())
 				return ;
 
-			if (snlist.size() == 1 && to_usi_string(snlist[0].move) == except_move)
+			if (snlist.size() == 1 && to_usi_string(snlist[0]) == except_move)
 			{
 				// 割り当て不可能。下手に割り当てると損する可能性があるからやめとく。
 				return ;
@@ -414,7 +414,7 @@ namespace YaneuraouTheCluster
 				string move_str;
 
 				do {
-					move = snlist[next_snlist].move;
+					move = snlist[next_snlist];
 					next_snlist = (next_snlist + 1) % snlist.size(); // 足りなければ同じ指し手を2回(以上)割り当てる。
 					move_str = to_usi_string(move);
 				} while (move_str == except_move); // except_moveの指し手は除外する。
@@ -792,7 +792,7 @@ namespace YaneuraouTheCluster
 
 		Position pos;
 		std::deque<StateInfo> si;
-		BookTools::feed_position_string(pos, sfen, si, [](Position&){});
+		BookTools::feed_position_string(pos, sfen, si, [](Position&,Move){});
 
 		auto ml = MoveList<LEGAL>(pos);
 		if (ml.size() < engine_num * 2)
@@ -813,7 +813,7 @@ namespace YaneuraouTheCluster
 			for(size_t i = 0; i < ml.size(); ++i)
 			{
 				auto move = ml.at(i);
-				moves_list[i % engine_num] += " " + to_usi_string(move.move);
+				moves_list[i % engine_num] += " " + to_usi_string(move);
 			}
 		}
 
@@ -995,7 +995,7 @@ namespace YaneuraouTheCluster
 
 		Position pos;
 		std::deque<StateInfo> si;
-		BookTools::feed_position_string(pos, sfen, si, [](Position&){});
+		BookTools::feed_position_string(pos, sfen, si, [](Position&,Move){});
 
 		auto ml = MoveList<LEGAL>(pos);
 		if (ml.size() >= engine_num)
@@ -1012,18 +1012,18 @@ namespace YaneuraouTheCluster
 			// →　これ、一手しかないので、
 			// 　　最小思考時間でbestmoveを返してくるエンジンがある。
 			// (やねうら王もそうなっている)　これleafを展開してからでないとまずい。
-				moves_list[i] = " " + to_usi_string(snlist[i].move);
+				moves_list[i] = " " + to_usi_string(snlist[i]);
 				// 局面を1手進めて全探索。
 
 			// 残りは3つ目のエンジンに割り当てる。
 			moves_list[2] = " searchmoves";
 			for(size_t i = 0; i < ml.size(); ++i)
 			{
-				auto move = ml.at(i).move;
+				auto move = ml.at(i);
 
 				// MultiPVの上位2手は除外する。
-				if (   move == snlist[0].move
-					|| move == snlist[1].move)
+				if (   move == snlist[0]
+					|| move == snlist[1])
 					continue;
 
 				moves_list[2] += " " + to_usi_string(move);

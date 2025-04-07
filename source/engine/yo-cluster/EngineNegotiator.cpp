@@ -53,7 +53,7 @@ namespace YaneuraouTheCluster
 			engine_id = engine_id_;
 
 			// エンジンの作業ディレクトリ。これはエンジンを実行するフォルダにしておいてやる。
-			string working_directory = Path::GetDirectoryName(Path::Combine(CommandLine::workingDirectory , "engines/" + path));
+			string working_directory = Path::GetDirectoryName(Path::Combine(CommandLine::get_working_directory() , "engines/" + path));
 
 			// エンジンのファイル名。(エンジンのworking_directory相対)
 			string engine_name = Path::GetFileName(path);
@@ -62,7 +62,7 @@ namespace YaneuraouTheCluster
 			if (StringExtension::StartsWith(path,"ssh"))
 			{
 				// ただし、working directoryは、enginesではある。
-				working_directory = Path::GetDirectoryName(Path::Combine(CommandLine::workingDirectory , "engines"));
+				working_directory = Path::GetDirectoryName(Path::Combine(CommandLine::get_working_directory() , "engines"));
 
 				// "ssh"コマンドをそのまま実行できるように、ProcessNegotiatorにはコマンドそのまま渡す。
 				engine_name = path;

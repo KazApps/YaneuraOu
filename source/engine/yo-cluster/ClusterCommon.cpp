@@ -169,10 +169,10 @@ namespace YaneuraouTheCluster
 
 		// "win"とか"resign"なら空の文字列を返す。
 
-		if (!is_ok(USI::to_move16(bestmove)))
+		if (!USI::to_move16(bestmove).is_ok())
 			bestmove.clear();
 
-		if (!is_ok(USI::to_move16(ponder)))
+		if (!USI::to_move16(ponder).is_ok())
 			ponder.clear();
 	}
 
@@ -311,7 +311,7 @@ namespace YaneuraouTheCluster
 			auto& r = rm[i];
 
 			// "MOVE_WIN"の可能性はあるかも？
-			if (!is_ok(r.pv[0]))
+			if (!r.pv[0].is_ok())
 				continue;
 
 			// この指し手のpvの更新が終わっているのか
@@ -321,7 +321,7 @@ namespace YaneuraouTheCluster
 			// 評価値、u64で表現できないので100で割って1000足しておく。
 			ExtMove e;
 			e.value = v;
-			e.move  = r.pv[0];
+			e = r.pv[0];
 			snlist.emplace_back(e);
 		}
 	}

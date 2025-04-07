@@ -137,7 +137,8 @@ namespace YaneuraouTheCluster
 
 			// エンジン接続後のイベントの呼び出し。
 			garbage_engines();
-			strategy->on_connected(StrategyParam(engines,options));
+			auto strategy_param = StrategyParam(engines, options);
+			strategy->on_connected(strategy_param);
 
 			worker_thread = std::thread([&](){ worker(); });
 		}
@@ -221,6 +222,7 @@ namespace YaneuraouTheCluster
 		void worker()
 		{
 			bool quit = false;
+			auto strategy_param = StrategyParam(engines,options);
 			while (!quit)
 			{
 				bool received = false;
@@ -246,7 +248,7 @@ namespace YaneuraouTheCluster
 					case USI_Message::ISREADY:
 						usi = message.message; // ← この変数の状態変化まではエンジンの次のメッセージを処理しない。
 						broadcast(message);
-						strategy->on_isready(StrategyParam(engines,options));
+						strategy->on_isready(strategy_param);
 						break;
 
 					case USI_Message::USINEWGAME:
@@ -282,7 +284,7 @@ namespace YaneuraouTheCluster
 
 						// GOコマンドの処理は、Strategyに丸投げ
 						garbage_engines();
-						strategy->on_go_command(StrategyParam(engines,options), message);
+						strategy->on_go_command(strategy_param, message);
 
 						break;
 
@@ -398,7 +400,8 @@ namespace YaneuraouTheCluster
 			garbage_engines();
 
 			// idleなので、Strategy::on_idle()を呼び出してやる。
-			strategy->on_idle(StrategyParam(engines,options));
+			auto strategy_param = StrategyParam(engines,options);
+			strategy->on_idle(strategy_param);
 
 			// エンジンの死活監視
 			//engine_check();
