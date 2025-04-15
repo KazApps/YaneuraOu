@@ -175,18 +175,6 @@
     <ClInclude Include="eval\nnue\features\half_ka_v2_hm.h">
       <Filter>リソース ファイル\eval\nnue\features</Filter>
     </ClInclude>
-    <ClInclude Include="eval\nnue\features\half_relative_kp.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\features\index_list.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\features\k.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClInclude>
-    <ClInclude Include="eval\nnue\features\p.h">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClInclude>
     <ClInclude Include="eval\nnue\layers\affine_transform.h">
       <Filter>リソース ファイル\eval\nnue\layers</Filter>
     </ClInclude>
@@ -340,12 +328,10 @@
     <ClInclude Include="numa.h">
       <Filter>リソース ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="engine.h">
-      <Filter>リソース ファイル</Filter>
-    </ClInclude>
     <ClInclude Include="usi_option.h">
       <Filter>リソース ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="eval\nnue\layers\sqr_clipped_relu.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="movegen.cpp">
@@ -432,15 +418,6 @@
     <ClCompile Include="eval\nnue\features\half_ka_v2_hm.cpp">
       <Filter>リソース ファイル\eval\nnue\features</Filter>
     </ClCompile>
-    <ClCompile Include="eval\nnue\features\half_relative_kp.cpp">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClCompile>
-    <ClCompile Include="eval\nnue\features\k.cpp">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClCompile>
-    <ClCompile Include="eval\nnue\features\p.cpp">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClCompile>
     <ClCompile Include="types.cpp">
       <Filter>リソース ファイル</Filter>
     </ClCompile>
@@ -461,12 +438,6 @@
     </ClCompile>
     <ClCompile Include="extra\super_sort.cpp">
       <Filter>リソース ファイル\extra</Filter>
-    </ClCompile>
-    <ClCompile Include="eval\nnue\features\half_kpe9.cpp">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
-    </ClCompile>
-    <ClCompile Include="eval\nnue\features\pe9.cpp">
-      <Filter>リソース ファイル\eval\nnue\features</Filter>
     </ClCompile>
     <ClCompile Include="eval\material\evaluate_material.cpp">
       <Filter>リソース ファイル\eval\material</Filter>
@@ -565,9 +536,6 @@
       <Filter>リソース ファイル\engine\dlshogi-engine</Filter>
     </ClCompile>
     <ClCompile Include="memory.cpp">
-      <Filter>リソース ファイル</Filter>
-    </ClCompile>
-    <ClCompile Include="engine.cpp">
       <Filter>リソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="book\policybook.cpp">
