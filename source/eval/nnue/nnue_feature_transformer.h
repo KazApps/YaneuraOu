@@ -495,8 +495,7 @@ class FeatureTransformer {
         if constexpr (Forward)
             FeatureSet::append_changed_indices<Perspective>(ksq, next->dirtyPiece, removed, added);
         else
-            FeatureSet::append_changed_indices<Perspective>(ksq, computed->dirtyPiece, added,
-                                                            removed);
+            FeatureSet::append_changed_indices<Perspective>(ksq, computed->dirtyPiece, added, removed);
 
         if (removed.size() == 0 && added.size() == 0)
         {

@@ -1274,6 +1274,7 @@ void Position::do_move_impl(Move m, StateInfo& new_st, bool givesCheck)
 		dp.from[0] = SQ_NB;
 		dp.to[0] = to;
 		dp.hand_bit[0] = bit;
+		dp.promote = false;
 #endif
 
 		
