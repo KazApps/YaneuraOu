@@ -118,9 +118,7 @@ void Engine::add_options() {
     // ⚠ だとして、その時にもresize_threads()は呼び出して、スレッド自体は生成するようにしてください。
 
     options.add(  //
-      // 📝 やねうら王では default threadを4に変更する。
-      //     過去にdefault設定のまま対局させて「やねうら王弱い」という人がいたため。
-      "Threads", Option(4, 1, MaxThreads, [this](const Option&) {
+      "Threads", Option(1, 1, MaxThreads, [this](const Option&) {
           resize_threads();
           return thread_allocation_information_as_string();
       }));
@@ -142,9 +140,9 @@ void Engine::add_options() {
     //     複数スレッドを用いて行うことができなくなるため。
     // ⚠ ここで、派生class側のresize_threads()ではなく、
     //	   このclassのresize_threads()を呼び出すことに注意。
-    //     派生class側のresize_threads()は、"USI_Hash"を参照して
+    //     派生class側のresize_threads()は、"Hash"を参照して
     //     置換表を初期化するコードが書かれているかもしれないが、
-    //     いま時点では、"USI_Hash"のoptionをaddしていないのでエラーとなる。
+    //     いま時点では、"Hash"のoptionをaddしていないのでエラーとなる。
     Engine::resize_threads();
 }
 

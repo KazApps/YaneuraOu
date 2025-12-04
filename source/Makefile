@@ -98,10 +98,6 @@ DEBUG = OFF
 COMPILER = clang++
 #COMPILER = em++
 
-# Python
-# ※ NNUEの未知なarchitectureの時にarchitecture headerを動的に生成するのに用いる。
-PYTHON = python
-
 # エンジンの表示名 (engine displayname)
 # ("usi"コマンドに対して出力される)
 #ENGINE_NAME =
@@ -462,35 +458,6 @@ ifneq (,$(findstring YANEURAOU_ENGINE_DEEP,$(YANEURAOU_EDITION)))
 endif
 
 ifneq (,$(findstring YANEURAOU_ENGINE_NNUE,$(YANEURAOU_EDITION)))
-	ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE)
-	else
-		# YANEURAOU_EDITIONがYANEURAOU_ENGINE_NNUEの後ろに文字が入っている名前なら、これは
-		# 標準NNUE型の亜種なので、とりあえず"YANEURAOU_ENGINE_NNUE"というシンボルを定義してやる。
-		CPPFLAGS += -DYANEURAOU_ENGINE_NNUE
-
-		ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_KP256)
-			CPPFLAGS += -DEVAL_NNUE_KP256
-
-		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_HALFKPE9)
-			CPPFLAGS += -DEVAL_NNUE_HALFKPE9
-
-		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_HALFKP_512X2_16_32)
-			CPPFLAGS += -DEVAL_NNUE_HALFKP_512X2_16_32
-
-		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_HALFKP_1024X2_8_32)
-			CPPFLAGS += -DEVAL_NNUE_HALFKP_1024X2_8_32
-
-		else ifeq ($(YANEURAOU_EDITION),YANEURAOU_ENGINE_NNUE_HALFKP_VM_256X2_32_32)
-			CPPFLAGS += -DEVAL_NNUE_HALFKP_VM_256X2_32_32
-
-		else
-			# 知らないNNUEのarchitectureなので、architecture headerを動的に生成する。
-			ARCH_HEADER_FILE = \"architectures/$(subst YANEURAOU_ENGINE_NNUE_,,$(YANEURAOU_EDITION)).h\"
-			CPPFLAGS += -DNNUE_ARCHITECTURE_HEADER=$(ARCH_HEADER_FILE)
-			ARCH_GEN_SCRIPT = $(PYTHON) eval/nnue/architectures/nnue_arch_gen.py $(YANEURAOU_EDITION) eval/nnue/architectures
-		endif
-	endif
-
 	# 大して大きなファイルではないので全部してしまう。
 	SOURCES += \
 		eval/nnue/evaluate_nnue.cpp                                     \
@@ -510,7 +477,7 @@ ifneq (,$(findstring YANEURAOU_ENGINE_NNUE,$(YANEURAOU_EDITION)))
 			eval/nnue/wasm_simd.cpp
 	endif
 	ifeq ($(EVAL_EMBEDDING),ON)
-		CPPFLAGS += -DNNUE_EMBEDDING
+		CPPFLAGS += -DNNUE_EMBEDDING -DYANEURAOU_NETWORK_FILE=\"$(EVALFILE)\"
 	endif
 endif
 
@@ -628,6 +595,38 @@ else ifeq ($(TARGET_CPU),WASM)
 else ifeq ($(TARGET_CPU),OTHER)
 	CPPFLAGS += -DNO_SSE
 
+else ifeq ($(TARGET_CPU),NATIVE)
+	CPPFLAGS += -march=native -mtune=native
+
+	ARCH_DEFINES = $(shell echo | $(CXX) -march=native -E -dM -)
+
+	ifneq ($(findstring __znver1__, $(ARCH_DEFINES)),)
+		CPPFLAGS += -DUSE_AVX2 -mbmi -mno-bmi2 -mavx2
+	else ifneq ($(findstring __znver2__, $(ARCH_DEFINES)),)
+		CPPFLAGS += -DUSE_AVX2 -mbmi -mno-bmi2 -mavx2
+	else ifneq ($(findstring __znver3__, $(ARCH_DEFINES)),)
+		CPPFLAGS += -DUSE_AVX2 -DUSE_BMI2 -mbmi -mbmi2 -mavx2
+	else ifneq ($(findstring __AVX512F__, $(ARCH_DEFINES)),)
+		ifneq ($(findstring __AVX512VNNI__, $(ARCH_DEFINES)),)
+			CPPFLAGS += -DUSE_AVX512 -DUSE_BMI2 -DUSE_VNNI
+		else
+			CPPFLAGS += -DUSE_AVX512 -DUSE_BMI2
+		endif
+	else ifneq ($(findstring __AVX2__, $(ARCH_DEFINES)),)
+		ifneq ($(findstring __VNNI__, $(ARCH_DEFINES)),)
+			CPPFLAGS += -DUSE_AVX2 -DUSE_BMI2 -DUSE_VNNI -DUSE_AVXVNNI
+		else
+			CPPFLAGS += -DUSE_AVX2 -DUSE_BMI2
+		endif
+	else ifneq ($(findstring __SSE4_2__, $(ARCH_DEFINES)),)
+		CPPFLAGS += -DUSE_SSE42
+	else ifneq ($(findstring __SSE4_1__, $(ARCH_DEFINES)),)
+		CPPFLAGS += -DUSE_SSE41
+	else ifneq ($(findstring __SSSE3__, $(ARCH_DEFINES)),)
+		CPPFLAGS += -DUSE_SSSE3
+	else ifneq ($(findstring __SSE2__, $(ARCH_DEFINES)),)
+		CPPFLAGS += -DUSE_SSE2
+	endif
 endif
 
 # YANEURAOU_EDITION , CPUターゲット名 などのシンボルをコンパイル時に定義してやる。
@@ -661,22 +660,16 @@ $(OBJDIR)/%.o: %.mm
 
 # ビルドターゲット
 
-# Pythonスクリプトを実行する共通のターゲット
-run_python_script:
-ifneq ($(ARCH_GEN_SCRIPT),)
-	$(ARCH_GEN_SCRIPT)
-endif
-
 # 通常使用。
-normal: run_python_script
+normal:
 	$(MAKE) CPPFLAGS='$(CPPFLAGS) $(LTOFLAGS)' LDFLAGS='$(LDFLAGS) $(LTOFLAGS)' $(TARGET)
 
 # 学習用。openmp , openblasなどを有効にする。
-evallearn: run_python_script
+evallearn:
 	$(MAKE) CPPFLAGS='$(CPPFLAGS) $(LTOFLAGS) $(OPENMP) $(BLAS_CPPFLAGS) -DEVAL_LEARN' LDFLAGS='$(LDFLAGS) $(OPENMP_LDFLAGS) $(BLAS_LDFLAGS) $(LTOFLAGS)' $(TARGET)
 
 # トーナメント用
-tournament: run_python_script
+tournament:
 	$(MAKE) CPPFLAGS='$(CPPFLAGS) $(LTOFLAGS) -DFOR_TOURNAMENT' LDFLAGS='$(LDFLAGS) $(LTOFLAGS)' $(TARGET)
 
 #　とりあえずPGOはAVX2とSSE4.2専用

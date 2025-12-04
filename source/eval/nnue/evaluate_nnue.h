@@ -16,7 +16,11 @@
 namespace YaneuraOu {
 namespace Eval::NNUE {
 
-	#define EvalFileDefaultName "nn.bin"
+	#if defined(YANEURAOU_NETWORK_FILE)
+		#define EvalFileDefaultName YANEURAOU_NETWORK_FILE
+	#else
+		#define EvalFileDefaultName "nn.bin"
+	#endif
 
 	// Hash value of evaluation function structure
 	// 評価関数の構造のハッシュ値

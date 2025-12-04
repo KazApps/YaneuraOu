@@ -1,7 +1,7 @@
 ﻿// Definition of input features and network structure used in NNUE evaluation function
 // NNUE評価関数で用いる入力特徴量とネットワーク構造の定義
-#ifndef CLASSIC_NNUE_HALFKP_1024X2_8_64_H_INCLUDED
-#define CLASSIC_NNUE_HALFKP_1024X2_8_64_H_INCLUDED
+#ifndef CLASSIC_NNUE_HALFKP_1024X2_8_96_H_INCLUDED
+#define CLASSIC_NNUE_HALFKP_1024X2_8_96_H_INCLUDED
 
 #include "../features/feature_set.h"
 #include "../features/half_kp.h"
@@ -29,7 +29,7 @@ namespace Eval::NNUE {
 		// ネットワーク構造の定義
 		using InputLayer = InputSlice<kTransformedFeatureDimensions * 2>;
 		using HiddenLayer1 = ClippedReLU<AffineTransformSparseInput<InputLayer, 8>>;
-		using HiddenLayer2 = ClippedReLU<AffineTransform<HiddenLayer1, 64>>;
+		using HiddenLayer2 = ClippedReLU<AffineTransform<HiddenLayer1, 96>>;
 		using OutputLayer = AffineTransform<HiddenLayer2, 1>;
 
 	}  // namespace Layers
@@ -39,4 +39,4 @@ namespace Eval::NNUE {
 } // namespace Eval::NNUE
 } // namespace YaneuraOu
 
-#endif // #ifndef NNUE_HALFKP_1024X2_8_64_H_INCLUDED
+#endif // #ifndef NNUE_HALFKP_1024X2_8_96_H_INCLUDED

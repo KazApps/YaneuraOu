@@ -130,20 +130,11 @@ void YaneuraOuEngine::add_options() {
 
 	// 📌 この探索部が用いるオプションの追加。
 
-#if STOCKFISH
     options.add(  //
-        "USI_Hash", Option(16, 1, MaxHashMB, [this](const Option& o) {
+        "Hash", Option(16, 1, MaxHashMB, [this](const Option& o) {
             set_tt_size(o);
             return std::nullopt;
         }));
-#else
-	// 🌈 やねうら王では、default値を1024に変更。
-    options.add(  //
-        "USI_Hash", Option(1024, 1, MaxHashMB, [this](const Option& o) {
-            set_tt_size(o);
-            return std::nullopt;
-        }));
-#endif
 
 	// その局面での上位N個の候補手を調べる機能
     // ⇨　これMAX_MOVESで十分。
@@ -340,7 +331,7 @@ void YaneuraOuEngine::resize_threads() {
     threads.set(numaContext.get_numa_config(), options, options["Threads"], worker_factory);
 
 	// 置換表の割り当て
-	set_tt_size(options["USI_Hash"]);
+	set_tt_size(options["Hash"]);
  
     // 📌 NUMAの設定
 

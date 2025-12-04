@@ -164,7 +164,7 @@ def create_option(engines,engine_threads,evals,times,hashes,numa,PARAMETERS_LOG_
 				option.append("go btime REST_TIME wtime REST_TIME byoyomi " + str(byoyomi))
 
 			option.append("setoption name Threads value " + str(engine_threads))
-			option.append("setoption name USI_Hash value " + str(hashes[i]))
+			option.append("setoption name Hash value " + str(hashes[i]))
 #			option.append("setoption name EvalDir value " + evals[i])
 
 			if "SILENT_MAJORITY" in engines[i]:

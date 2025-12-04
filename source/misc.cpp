@@ -2032,6 +2032,13 @@ void StandardInput::push(const string& s)
 
 void StandardInput::parse_args(const CommandLine& cli)
 {
+	// bench command
+	if (cli.argc == 2 && string(cli.argv[1]) == "bench")
+	{
+		push("bench");
+		push("quit");
+	}
+
 	// ファイルからコマンドの指定
 	if (cli.argc >= 3 && string(cli.argv[1]) == "file")
 	{

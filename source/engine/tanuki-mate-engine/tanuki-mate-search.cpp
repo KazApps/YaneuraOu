@@ -230,10 +230,10 @@ struct TranspositionTable {
 	}
 
 	// 置換表を確保する。
-	// 現在のOptions["USI_Hash"]の値だけ確保する。
+	// 現在のOptions["Hash"]の値だけ確保する。
 	void Resize(OptionsMap& option)
 	{
-		int64_t hash_size_mb = (int)option["USI_Hash"];
+		int64_t hash_size_mb = (int)option["Hash"];
 
 		// 作成するクラスターの数。2のべき乗にする。
 		int64_t new_num_clusters = 1LL << MSB64((hash_size_mb * 1024 * 1024) / sizeof(Cluster));
@@ -966,7 +966,7 @@ public:
 
 		// トーナメントモードであるならゼロクリアして物理メモリを割り当てておく。
 		// 進捗を表示しながら並列化してゼロクリア
-		Tools::memclear(threads, "Tanuki::USI_Hash", transposition_table.tt, transposition_table.Size());
+		Tools::memclear(threads, "Tanuki::Hash", transposition_table.tt, transposition_table.Size());
 	}
 
 	// 置換表クラスの実体
@@ -1049,7 +1049,7 @@ public:
 
 		// 置換表のサイズ。[MB]で指定。
 		options.add(  //
-			"USI_Hash", Option(1024, 1, MaxHashMB, [this](const Option& o) {
+			"Hash", Option(1024, 1, MaxHashMB, [this](const Option& o) {
 				// set_tt_size();
 				// ⇨  どうせisready()で確保するので、handlerを呼び出して反映させる必要はない。
 				return std::nullopt;
