@@ -39,6 +39,13 @@ constexpr bool minor_piece_table[PIECE_NB] = {
 // minor pieceかを判定する。
 constexpr bool is_minor_piece(Piece pc) { return minor_piece_table[pc]; }
 
+// cavalry pieceかを判定する。
+constexpr bool is_cavalry_piece(Piece pc) {
+    return raw_type_of(pc) == ROOK || raw_type_of(pc) == BISHOP || type_of(pc) == KNIGHT;
+}
+
+constexpr bool is_cavalry_piece(PieceType pt) { return pt == ROOK || pt == BISHOP || pt == KNIGHT; }
+
 #endif
 
 // 局面のhash keyを求めるときに用いるZobrist key
@@ -136,13 +143,14 @@ inline void xor_piece_for_partial_key(StateInfo* st, Piece pc, Square s) {
 			それを用いてprefetchしたいという意味があるので、このなかでやるわけにはいかない。
 	*/
     if (type_of(pc) == PAWN)
-    {
         st->pawnKey ^= Zobrist::psq[pc][s];
-    }
     else
     {
         if (is_minor_piece(pc))
             st->minorPieceKey ^= Zobrist::psq[pc][s];
+
+        if (is_cavalry_piece(pc))
+            st->cavalryBoardKey ^= Zobrist::psq[pc][s];
 
         st->nonPawnKey[color_of(pc)] ^= Zobrist::psq[pc][s];
     }
@@ -163,7 +171,21 @@ inline void remove_piece_for_partial_key(StateInfo* st, Piece pc, Square s) {
     st->materialKey -= Zobrist::psq[pc][8];
 #endif
 }
-} // namespace
+
+inline void put_hand_piece_for_partial_key(StateInfo* st, Color c, PieceType rpc) {
+#if defined(USE_PARTIAL_KEY)
+    if (is_cavalry_piece(rpc))
+        st->cavalryHandKey += Zobrist::hand[c][rpc];
+#endif
+}
+
+inline void remove_hand_piece_for_partial_key(StateInfo* st, Color c, PieceType rpc) {
+#if defined(USE_PARTIAL_KEY)
+    if (is_cavalry_piece(rpc))
+        st->cavalryHandKey -= Zobrist::hand[c][rpc];
+#endif
+}
+}  // namespace
 
 // ----------------------------------
 //  Position::set()とその逆変換sfen()
@@ -318,6 +340,8 @@ void Position::set_state() const {
 
     st->materialKey       = Zobrist::zero;
     st->minorPieceKey     = Zobrist::zero;
+    st->cavalryBoardKey   = Zobrist::zero;
+    st->cavalryHandKey    = Zobrist::zero;
     st->nonPawnKey[WHITE] = st->nonPawnKey[BLACK] = Zobrist::zero;
     st->pawnKey                                   = Zobrist::noPawns;
 
@@ -371,9 +395,16 @@ void Position::set_state() const {
 
     for (auto c : COLOR)
         for (PieceType pr = PAWN; pr < PIECE_HAND_NB; ++pr)
-            st->hand_key +=
+        {
+            const auto v =
               Zobrist::hand[c][pr]
-              * (int64_t) hand_count(hand[c], pr);  // 手駒はaddにする(差分計算が楽になるため)
+              * (int64_t) hand_count(hand[c], pr);
+
+            st->hand_key += v;  // 手駒はaddにする(差分計算が楽になるため)
+
+            if (is_cavalry_piece(pr))
+                st->cavalryHandKey += v;
+        }
 
     // --- hand
 
@@ -1795,6 +1826,7 @@ void Position::do_move_impl(Move m, StateInfo& newSt, bool givesCheck, const T* 
 
         // ⚠ piece_no_of()のときに、いまの手駒の枚数を参照するので↑のあとで更新する必要がある。
         remove_hand_piece(Us, pr);
+        remove_hand_piece_for_partial_key(st, Us, pr);
 
         // 王手している駒のbitboardを更新する。
         // 駒打ちなのでこの駒で王手になったに違いない。
@@ -1878,6 +1910,7 @@ void Position::do_move_impl(Move m, StateInfo& newSt, bool givesCheck, const T* 
             // ⚠ piece_no_of()で手駒の枚数を参照するので
             //    ↑のあとに行う必要がある。
             put_hand_piece(Us, pr);
+            put_hand_piece_for_partial_key(st, Us, pr);
 
 #if defined(USE_SFNN)
             dp.remove_pc = captured;

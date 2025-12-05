@@ -57,7 +57,11 @@ struct StateInfo {
 	// 📝 チェスだとKnight, Bishop。
     Key minorPieceKey;
 
-	// 歩以外の駒によるhash key(盤上のみ)
+    // 大駒+桂によるhash key
+	Key cavalryBoardKey;
+	Key cavalryHandKey;
+
+    // 歩以外の駒によるhash key(盤上のみ)
     Key nonPawnKey[COLOR_NB];
 #endif
 
@@ -722,6 +726,7 @@ public:
     Key material_key() const;
     Key pawn_key() const;
     Key minor_piece_key() const;
+    Key cavalry_key() const;
     Key non_pawn_key(Color c) const;
 
 #if !STOCKFISH
@@ -1253,6 +1258,8 @@ inline Key Position::material_key() const { return st->materialKey; }
 
 inline Key Position::minor_piece_key() const { return st->minorPieceKey; }
 
+inline Key Position::cavalry_key() const { return st->cavalryBoardKey ^ st->cavalryHandKey; }
+
 inline Key Position::non_pawn_key(Color c) const { return st->nonPawnKey[c]; }
 #else
 
@@ -1261,6 +1268,7 @@ inline Key Position::non_pawn_key(Color c) const { return st->nonPawnKey[c]; }
 inline Key Position::pawn_key() const { return Key(); }
 inline Key Position::material_key() const { return Key(); }
 inline Key Position::minor_piece_key() const { return Key(); }
+inline Key Position::cavalry_key() const { return Key(); }
 inline Key Position::non_pawn_key(Color c) const { return Key(); }
 
 #endif
