@@ -500,6 +500,9 @@ using SearchedList                  = ValueList<Move, SEARCHEDLIST_CAPACITY>;
 // （※スケーラー）最適化された持ち時間よりも短い時間設定で調整された
 // すべてのパラメータについては、より長い持ち時間での検証が必要です。
 
+int tune1 = 8708, tune2 = 8767, tune3 = 7706, tune4 = 10096, tune5 = 7058;
+TUNE(tune1, tune2, tune3, tune4, tune5);
+
 int correction_value(const YaneuraOuWorker& w, const Position& pos, const Stack* const ss) {
     const Color us    = pos.side_to_move();
     const auto  m     = (ss - 1)->currentMove;
@@ -513,7 +516,7 @@ int correction_value(const YaneuraOuWorker& w, const Position& pos, const Stack*
 		        + (*(ss - 4)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
                  : 8;
 
-    return 8708 * pcv + 8767 * micv + 7706 * cavcv + 10096 * (wnpcv + bnpcv) + 7058 * cntcv;
+    return tune1 * pcv + tune2 * micv + tune3 * cavcv + tune4 * (wnpcv + bnpcv) + tune5 * cntcv;
 }
 
 // Add correctionHistory value to raw staticEval and guarantee evaluation
@@ -524,6 +527,9 @@ Value to_corrected_static_eval(const Value v, const int cv) {
 	return std::clamp(v + cv / 131072, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
 }
 
+int tune6 = 210, tune7 = 115, tune8 = 168, tune9 = 67, tune10 = 157, tune11 = 73;
+TUNE(tune6, tune7, tune8, tune9, tune10, tune11);
+
 void update_correction_history(const Position&          pos,
                                Stack* const             ss,
                                Search::YaneuraOuWorker& workerThread,
@@ -531,22 +537,20 @@ void update_correction_history(const Position&          pos,
     const Move  m  = (ss - 1)->currentMove;
     const Color us = pos.side_to_move();
 
-    constexpr int nonPawnWeight = 210;
-
-    workerThread.pawnCorrectionHistory[pawn_correction_history_index(pos)][us] << bonus * 115 / 128;
-    workerThread.minorPieceCorrectionHistory[minor_piece_index(pos)][us] << bonus * 168 / 128;
-    workerThread.cavalryCorrectionHistory[cavalry_index(pos)][us] << bonus * 67 / 128;
+    workerThread.pawnCorrectionHistory[pawn_correction_history_index(pos)][us] << bonus * tune7 / 128;
+    workerThread.minorPieceCorrectionHistory[minor_piece_index(pos)][us] << bonus * tune8 / 128;
+    workerThread.cavalryCorrectionHistory[cavalry_index(pos)][us] << bonus * tune9 / 128;
     workerThread.nonPawnCorrectionHistory[non_pawn_index<WHITE>(pos)][WHITE][us]
-      << bonus * nonPawnWeight / 128;
+      << bonus * tune6 / 128;
     workerThread.nonPawnCorrectionHistory[non_pawn_index<BLACK>(pos)][BLACK][us]
-      << bonus * nonPawnWeight / 128;
+      << bonus * tune6 / 128;
 
     if (m.is_ok())
     {
         const Square to = m.to_sq();
         const Piece  pc = pos.piece_on(m.to_sq());
-        (*(ss - 2)->continuationCorrectionHistory)[pc][to] << bonus * 157 / 128;
-        (*(ss - 4)->continuationCorrectionHistory)[pc][to] << bonus * 73 / 128;
+        (*(ss - 2)->continuationCorrectionHistory)[pc][to] << bonus * tune10 / 128;
+        (*(ss - 4)->continuationCorrectionHistory)[pc][to] << bonus * tune11 / 128;
     }
 }
 
