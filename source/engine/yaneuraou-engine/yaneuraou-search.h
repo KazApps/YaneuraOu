@@ -443,6 +443,7 @@ class YaneuraOuWorker: public Worker {
 
     CorrectionHistory<Pawn>         pawnCorrectionHistory;
     CorrectionHistory<Minor>        minorPieceCorrectionHistory;
+    CorrectionHistory<Cavalry>      cavalryCorrectionHistory;
     CorrectionHistory<NonPawn>      nonPawnCorrectionHistory;
     CorrectionHistory<Continuation> continuationCorrectionHistory;
 
