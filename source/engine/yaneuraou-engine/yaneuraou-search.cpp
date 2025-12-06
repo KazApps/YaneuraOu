@@ -513,7 +513,7 @@ int correction_value(const YaneuraOuWorker& w, const Position& pos, const Stack*
 		        + (*(ss - 4)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
                  : 8;
 
-    return 8708 * pcv + 8767 * micv + 7706 * cavcv + 10096 * (wnpcv + bnpcv) + 7058 * cntcv;
+    return 9114 * pcv + 8371 * micv + 7532 * cavcv + 10075 * (wnpcv + bnpcv) + 7678 * cntcv;
 }
 
 // Add correctionHistory value to raw staticEval and guarantee evaluation
@@ -531,11 +531,11 @@ void update_correction_history(const Position&          pos,
     const Move  m  = (ss - 1)->currentMove;
     const Color us = pos.side_to_move();
 
-    constexpr int nonPawnWeight = 210;
+    constexpr int nonPawnWeight = 216;
 
-    workerThread.pawnCorrectionHistory[pawn_correction_history_index(pos)][us] << bonus * 115 / 128;
-    workerThread.minorPieceCorrectionHistory[minor_piece_index(pos)][us] << bonus * 168 / 128;
-    workerThread.cavalryCorrectionHistory[cavalry_index(pos)][us] << bonus * 67 / 128;
+    workerThread.pawnCorrectionHistory[pawn_correction_history_index(pos)][us] << bonus * 114 / 128;
+    workerThread.minorPieceCorrectionHistory[minor_piece_index(pos)][us] << bonus * 166 / 128;
+    workerThread.cavalryCorrectionHistory[cavalry_index(pos)][us] << bonus * 65 / 128;
     workerThread.nonPawnCorrectionHistory[non_pawn_index<WHITE>(pos)][WHITE][us]
       << bonus * nonPawnWeight / 128;
     workerThread.nonPawnCorrectionHistory[non_pawn_index<BLACK>(pos)][BLACK][us]
@@ -545,8 +545,8 @@ void update_correction_history(const Position&          pos,
     {
         const Square to = m.to_sq();
         const Piece  pc = pos.piece_on(m.to_sq());
-        (*(ss - 2)->continuationCorrectionHistory)[pc][to] << bonus * 157 / 128;
-        (*(ss - 4)->continuationCorrectionHistory)[pc][to] << bonus * 73 / 128;
+        (*(ss - 2)->continuationCorrectionHistory)[pc][to] << bonus * 159 / 128;
+        (*(ss - 4)->continuationCorrectionHistory)[pc][to] << bonus * 70 / 128;
     }
 }
 
