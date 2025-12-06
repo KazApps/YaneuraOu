@@ -57,11 +57,11 @@ void Tune::make_option(OptionsMap* opts, const string& n, int v, const SetRange&
 			R_end = 0.0020はチューニング終了時の学習率。勾配方向に値の動かす量の係数。500回で1移動する。
 	*/
 
-	std::cout << n << ","                                  //
-              << v << ","                                  //
-              << r(v).first << ","                         //
-              << r(v).second << ","                        //
-              << (r(v).second - r(v).first) / 20.0 << ","  //
+	std::cout << n << ", int, "                             //
+              << v << ", "                                  //
+              << r(v).first << ", "                         //
+              << r(v).second << ", "                        //
+              << (r(v).second - r(v).first) / 20.0 << ", "  //
               << "0.0020" << std::endl;
 }
 
