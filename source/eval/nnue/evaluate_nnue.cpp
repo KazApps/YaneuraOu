@@ -20,10 +20,6 @@
 #endif
 
 #include "evaluate_nnue.h"
-
-namespace YaneuraOu::Eval::NNUE {
-extern int FV_SCALE;
-}
  
 // ============================================================
 //              旧評価関数のためのヘルパー
@@ -81,12 +77,6 @@ void add_options_(OptionsMap& options, ThreadPool& threads) {
                         last_eval_dir = eval_dir;
                         eval_loaded   = false;
                     }
-                    return std::nullopt;
-                }));
-
-    // NNUEのFV_SCALEの値
-    Options.add("FV_SCALE", Option(16, 1, 128, [&](const Option& o) {
-                    YaneuraOu::Eval::NNUE::FV_SCALE = int(o);
                     return std::nullopt;
                 }));
 }
@@ -152,8 +142,6 @@ namespace {
 namespace YaneuraOu {
 namespace Eval {
 namespace NNUE {
-
-	int FV_SCALE = 16; // 水匠5では24がベストらしいのでエンジンオプション"FV_SCALE"で変更可能にした。
 
     // 入力特徴量変換器
 	LargePagePtr<FeatureTransformer> feature_transformer;

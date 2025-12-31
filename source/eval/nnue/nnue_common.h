@@ -54,7 +54,7 @@ namespace Eval::NNUE {
 
   // Constant used in evaluation value calculation
   // 評価値の計算で利用する定数
-  extern int FV_SCALE; // default 16。水匠5では24がベストらしいのでエンジンオプション"FV_SCALE"で変更可能にした。
+  constexpr int FV_SCALE = 32;
 
   constexpr int kWeightScaleBits = 6;
 
