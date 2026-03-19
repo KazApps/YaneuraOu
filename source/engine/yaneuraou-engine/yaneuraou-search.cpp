@@ -3343,121 +3343,127 @@ moves_loop:  // When in check, search starts here
 		*/
 
 		// singular延長をするnodeであるか。
-		if (!rootNode && move == ttData.move && !excludedMove && depth >= 6 + ss->ttPv
-            && is_valid(ttData.value) && !is_decisive(ttData.value) && (ttData.bound & BOUND_LOWER)
-            && ttData.depth >= depth - 3)
+		if (!rootNode && move == ttData.move && !excludedMove)
         {
-            /*
-				💡 このnodeについてある程度調べたことが置換表によって証明されている。(ttMove == moveなのでttMove != Move::none())
-				    (そうでないとsingularの指し手以外に他の有望な指し手がないかどうかを調べるために
-					null window searchするときに大きなコストを伴いかねないから。)
-			*/
-
-            //  📍 このmargin値は評価関数の性質に合わせて調整されるべき。
-
-            Value singularBeta  = ttData.value - (56 + 81 * (ss->ttPv && !PvNode)) * depth / 60;
-            Depth singularDepth = newDepth / 2;
-
-            // 💡 move(ttMove)の指し手を以下のsearch()での探索から除外。
-
-            ss->excludedMove = move;
-
-            // 📝 局面はdo_move()で進めずにこのnodeから浅い探索深さで探索しなおす。
-            //     浅いdepthでnull windowなので、すぐに探索は終わるはず。
-
-            value = search<NonPV>(pos, ss, singularBeta - 1, singularBeta, singularDepth, cutNode);
-            ss->excludedMove = Move::none();
-
-            // 💡 置換表の指し手以外がすべてfail lowしているならsingular延長確定。
-            //    (延長され続けるとまずいので何らかの考慮は必要)
-
-            if (value < singularBeta)
+            if (depth >= 6 + ss->ttPv && is_valid(ttData.value) && !is_decisive(ttData.value)
+                && (ttData.bound & BOUND_LOWER) && ttData.depth >= depth - 3)
             {
-                int corrValAdj   = std::abs(correctionValue) / 229958;
-                int doubleMargin = -4 + 198 * PvNode - 212 * !ttCapture - corrValAdj
-                                 - 921 * ttMoveHistory / 127649 - (ss->ply > rootDepth) * 45;
-                int tripleMargin = 76 + 308 * PvNode - 250 * !ttCapture + 92 * ss->ttPv - corrValAdj
-                                 - (ss->ply * 2 > rootDepth * 3) * 52;
+                /*
+                    💡 このnodeについてある程度調べたことが置換表によって証明されている。(ttMove == moveなのでttMove != Move::none())
+                        (そうでないとsingularの指し手以外に他の有望な指し手がないかどうかを調べるために
+                        null window searchするときに大きなコストを伴いかねないから。)
+                */
 
-                // 📝 2重延長を制限して探索の組合せ爆発を回避する必要がある。
+                //  📍 このmargin値は評価関数の性質に合わせて調整されるべき。
 
-                if (pos.capture(move))
-                    extension = 1;
-                else
-                    extension =
-                        1 + (value < singularBeta - doubleMargin) + (value < singularBeta - tripleMargin);
+                Value singularBeta  = ttData.value - (56 + 81 * (ss->ttPv && !PvNode)) * depth / 60;
+                Depth singularDepth = newDepth / 2;
 
-                depth++;
+                // 💡 move(ttMove)の指し手を以下のsearch()での探索から除外。
+
+                ss->excludedMove = move;
+
+                // 📝 局面はdo_move()で進めずにこのnodeから浅い探索深さで探索しなおす。
+                //     浅いdepthでnull windowなので、すぐに探索は終わるはず。
+
+                value = search<NonPV>(pos, ss, singularBeta - 1, singularBeta, singularDepth, cutNode);
+                ss->excludedMove = Move::none();
+
+                // 💡 置換表の指し手以外がすべてfail lowしているならsingular延長確定。
+                //    (延長され続けるとまずいので何らかの考慮は必要)
+
+                if (value < singularBeta)
+                {
+                    int corrValAdj   = std::abs(correctionValue) / 229958;
+                    int doubleMargin = -4 + 198 * PvNode - 212 * !ttCapture - corrValAdj
+                                    - 921 * ttMoveHistory / 127649 - (ss->ply > rootDepth) * 45;
+                    int tripleMargin = 76 + 308 * PvNode - 250 * !ttCapture + 92 * ss->ttPv - corrValAdj
+                                    - (ss->ply * 2 > rootDepth * 3) * 52;
+
+                    // 📝 2重延長を制限して探索の組合せ爆発を回避する必要がある。
+
+                    if (pos.capture(move))
+                        extension = 1;
+                    else
+                        extension =
+                            1 + (value < singularBeta - doubleMargin) + (value < singularBeta - tripleMargin);
+
+                    depth++;
+                }
+
+                // Multi-cut pruning
+                // Our ttMove is assumed to fail high based on the bound of the TT entry,
+                // and if after excluding the ttMove with a reduced search we fail high
+                // over the original beta, we assume this expected cut-node is not
+                // singular (multiple moves fail high), and we can prune the whole
+                // subtree by returning a softbound.
+
+                // マルチカット枝刈り
+                // 私たちのttMoveはfail highすると想定されており、
+                // 今、ttMoveなしの(この局面でttMoveの指し手を候補手から除外した)、
+                // reduced search(探索深さを減らした探索)でもfail highしました。
+                // したがって、この予想されるカットノードはsingular(1つだけ傑出した指し手)ではないと想定し、
+                // 複数の手がfail highすると考え、softboundを返すことで全サブツリーを枝刈りすることができます。
+
+                /*
+                    📓 訳注
+                
+                    cut-node  : αβ探索において早期に枝刈りできるnodeのこと。
+                                つまり、searchの引数で渡されたbetaを上回ることがわかったのでreturnできる(これをbeta cutと呼ぶ)
+                                できるようなnodeのこと。
+                
+                    softbound : lowerbound(下界)やupperbound(上界)のように真の値がその値より大きい(小さい)
+                                ことがわかっているような値のこと。
+
+                */
+
+                else if (value >= beta && !is_decisive(value))
+                {
+                    ttMoveHistory << std::max(-400 - 100 * depth, -4000);
+                    return value;
+                }
+
+                // Negative extensions
+                // If other moves failed high over (ttValue - margin) without the
+                // ttMove on a reduced search, but we cannot do multi-cut because
+                // (ttValue - margin) is lower than the original beta, we do not know
+                // if the ttMove is singular or can do a multi-cut, so we reduce the
+                // ttMove in favor of other moves based on some conditions:
+
+                // 負の延長
+                // もしttMoveを使用せずに(ttValue - margin)以上で他の手がreduced search
+                // (簡略化した探索)で高いスコアを出したが、(ttValue - margin)が元のbetaよりも
+                // 低いためにマルチカットを行えない場合、
+                // ttMoveがsingularかマルチカットが可能かはわからないので、
+                // いくつかの条件に基づいて他の手を優先してttMoveを減らします：
+
+
+                // If the ttMove is assumed to fail high over current beta
+                // ttMove が現在の beta を超えて fail high すると想定される場合
+
+                else if (ttData.value >= beta)
+                    extension = -3;
+
+                // If we are on a cutNode but the ttMove is not assumed to fail high
+                // over current beta
+                // 現在のノードがカットノードであるが、ttMoveが現在のbetaを超えて
+                // fail highすると思われない場合
+
+                else if (cutNode)
+                    extension = -2;
+
+                /*
+                ⚠  王手延長に関して、Stockfishのコード、ここに持ってくる時には気をつけること！
+                    将棋では王手はわりと続くのでそのまま持ってくるとやりすぎの可能性が高い。
+
+                📓 Stockfishで削除されたが、王手延長自体は何らかあった方が良い可能性はあるので条件を調整してはどうか。
+                        Remove check extension : https://github.com/official-stockfish/Stockfish/commit/96837bc4396d205536cdaabfc17e4885a48b0588
+                */
             }
-
-            // Multi-cut pruning
-            // Our ttMove is assumed to fail high based on the bound of the TT entry,
-            // and if after excluding the ttMove with a reduced search we fail high
-            // over the original beta, we assume this expected cut-node is not
-            // singular (multiple moves fail high), and we can prune the whole
-            // subtree by returning a softbound.
-
-            // マルチカット枝刈り
-            // 私たちのttMoveはfail highすると想定されており、
-            // 今、ttMoveなしの(この局面でttMoveの指し手を候補手から除外した)、
-            // reduced search(探索深さを減らした探索)でもfail highしました。
-            // したがって、この予想されるカットノードはsingular(1つだけ傑出した指し手)ではないと想定し、
-            // 複数の手がfail highすると考え、softboundを返すことで全サブツリーを枝刈りすることができます。
-
-            /*
-				📓 訳注
             
-				 cut-node  : αβ探索において早期に枝刈りできるnodeのこと。
-							 つまり、searchの引数で渡されたbetaを上回ることがわかったのでreturnできる(これをbeta cutと呼ぶ)
-							 できるようなnodeのこと。
-            
-				 softbound : lowerbound(下界)やupperbound(上界)のように真の値がその値より大きい(小さい)
-							 ことがわかっているような値のこと。
-
-			*/
-
-            else if (value >= beta && !is_decisive(value))
-            {
-                ttMoveHistory << std::max(-400 - 100 * depth, -4000);
-                return value;
-            }
-
-            // Negative extensions
-            // If other moves failed high over (ttValue - margin) without the
-            // ttMove on a reduced search, but we cannot do multi-cut because
-            // (ttValue - margin) is lower than the original beta, we do not know
-            // if the ttMove is singular or can do a multi-cut, so we reduce the
-            // ttMove in favor of other moves based on some conditions:
-
-            // 負の延長
-            // もしttMoveを使用せずに(ttValue - margin)以上で他の手がreduced search
-            // (簡略化した探索)で高いスコアを出したが、(ttValue - margin)が元のbetaよりも
-            // 低いためにマルチカットを行えない場合、
-            // ttMoveがsingularかマルチカットが可能かはわからないので、
-            // いくつかの条件に基づいて他の手を優先してttMoveを減らします：
-
-
-            // If the ttMove is assumed to fail high over current beta
-            // ttMove が現在の beta を超えて fail high すると想定される場合
-
-            else if (ttData.value >= beta)
-                extension = -3;
-
-            // If we are on a cutNode but the ttMove is not assumed to fail high
-            // over current beta
-            // 現在のノードがカットノードであるが、ttMoveが現在のbetaを超えて
-            // fail highすると思われない場合
-
-            else if (cutNode)
-                extension = -2;
-
-            /*
-			  ⚠  王手延長に関して、Stockfishのコード、ここに持ってくる時には気をつけること！
-			       将棋では王手はわりと続くのでそのまま持ってくるとやりすぎの可能性が高い。
-
-			  📓 Stockfishで削除されたが、王手延長自体は何らかあった方が良い可能性はあるので条件を調整してはどうか。
-					Remove check extension : https://github.com/official-stockfish/Stockfish/commit/96837bc4396d205536cdaabfc17e4885a48b0588
-			*/
+            // Low Depth Singular Extensions
+            else if (depth <= 7 && !ss->inCheck && ss->staticEval <= alpha - 26 && ttData.bound == BOUND_LOWER)
+                extension = 1;
         }
 
 		// -----------------------
