@@ -3468,6 +3468,9 @@ moves_loop:  // When in check, search starts here
 		// 指し手で1手進める
         do_move(pos, move, st, givesCheck, ss);
 
+        if (extension == 0 && pos.checkers())
+            extension = 1;
+
         // Add extension to new depth
         // 求まった延長する手数を新しいdepthに加算
 
