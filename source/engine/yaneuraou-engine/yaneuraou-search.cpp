@@ -3524,8 +3524,13 @@ moves_loop:  // When in check, search starts here
             r -= 2018;
 
         if (capture)
+        {
             ss->statScore = 803 * int(PieceValue[pos.captured_piece()]) / 128
                           + captureHistory[movedPiece][move.to_sq()][type_of(pos.captured_piece())];
+
+            // statsScoreとは別にcaptureに対してはreductionを増やす。
+            r += 768;
+        }
         else
             // 📊【計測資料 11.】statScoreの計算でcontHist[3]も調べるかどうか。
             // 🤔 contHist[5]も/2とかで入れたほうが良いのでは…。誤差か…？
