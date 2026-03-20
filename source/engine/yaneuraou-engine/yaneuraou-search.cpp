@@ -3375,17 +3375,16 @@ moves_loop:  // When in check, search starts here
             {
                 int corrValAdj   = std::abs(correctionValue) / 229958;
                 int doubleMargin = -4 + 198 * PvNode - 212 * !ttCapture - corrValAdj
-                                 - 921 * ttMoveHistory / 127649 - (ss->ply > rootDepth) * 45;
+                                 - 921 * ttMoveHistory / 127649 - (ss->ply > rootDepth) * 45
+                                 + PieceValue[pos.captured_piece()];
                 int tripleMargin = 76 + 308 * PvNode - 250 * !ttCapture + 92 * ss->ttPv - corrValAdj
-                                 - (ss->ply * 2 > rootDepth * 3) * 52;
+                                 - (ss->ply * 2 > rootDepth * 3) * 52
+                                 + PieceValue[pos.captured_piece()] * 3 / 2;
 
                 // 📝 2重延長を制限して探索の組合せ爆発を回避する必要がある。
 
-                if (pos.capture(move))
-                    extension = 1;
-                else
-                    extension =
-                        1 + (value < singularBeta - doubleMargin) + (value < singularBeta - tripleMargin);
+                extension =
+                    1 + (value < singularBeta - doubleMargin) + (value < singularBeta - tripleMargin);
 
                 depth++;
             }
