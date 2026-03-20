@@ -653,9 +653,11 @@ else ifeq ($(TARGET_CPU),NATIVE)
 		CPPFLAGS += -DUSE_AVX2 -DUSE_BMI2
 	else ifneq ($(findstring __AVX512F__, $(ARCH_DEFINES)),)
 		ifneq ($(findstring __AVX512VNNI__, $(ARCH_DEFINES)),)
-			CPPFLAGS += -DUSE_AVX512 -DUSE_BMI2 -DUSE_VNNI
+# 			CPPFLAGS += -DUSE_AVX512 -DUSE_BMI2 -DUSE_VNNI
+			CPPFLAGS += -DUSE_AVX2 -DUSE_BMI2 -DUSE_VNNI
 		else
-			CPPFLAGS += -DUSE_AVX512 -DUSE_BMI2
+# 			CPPFLAGS += -DUSE_AVX512 -DUSE_BMI2
+			CPPFLAGS += -DUSE_AVX2 -DUSE_BMI2
 		endif
 	else ifneq ($(findstring __AVX2__, $(ARCH_DEFINES)),)
 		ifneq ($(findstring __VNNI__, $(ARCH_DEFINES)),)
