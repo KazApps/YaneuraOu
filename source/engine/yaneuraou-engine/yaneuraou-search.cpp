@@ -4137,17 +4137,8 @@ Value Search::YaneuraOuWorker::qsearch(Position& pos, Stack* ss, Value alpha, Va
     moveCount                   = 0;
 
 #if defined(USE_CLASSIC_EVAL) && defined(USE_LAZY_EVALUATE)
-    bool evaluated = false;
-    auto evaluate  = [&](Position& pos) {
-        evaluated = true;
-        return this->evaluate(pos);
-    };
     auto do_move = [&](Position& pos, Move move, StateInfo st, bool givesCheck, Stack* ss) {
-        if (!evaluated)
-        {
-            evaluated = true;
-            Eval::evaluate_with_no_return(pos);
-        }
+        Eval::evaluate_with_no_return(pos);
         this->do_move(pos, move, st, givesCheck, ss);
     };
 #endif
