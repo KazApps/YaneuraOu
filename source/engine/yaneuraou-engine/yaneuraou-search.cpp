@@ -3538,6 +3538,10 @@ moves_loop:  // When in check, search starts here
 
         r -= ss->statScore * 794 / 8192;
 
+        // Singular Extension Searchであるならreductionを増やす
+        if (excludedMove)
+            r += 768;
+
 		// -----------------------
         // Step 17. Late moves reduction / extension (LMR)
         // Step 17. 遅い指し手の削減／延長（LMR)
