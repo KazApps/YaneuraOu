@@ -4008,7 +4008,7 @@ moves_loop:  // When in check, search starts here
 	// かつ誤差の方向が上限／下限を超えているかどうかと一致する場合には、
 	// 補正履歴(correction history)を調整する。
 
-	if (!ss->inCheck && !(bestMove && pos.capture(bestMove))
+	if (!ss->inCheck && !(bestMove && pos.capture(bestMove) && pos.see_ge(bestMove, 0))
         && (bestValue > ss->staticEval) == bool(bestMove))
     {
         auto bonus = std::clamp(int(bestValue - ss->staticEval) * depth / (bestMove ? 10 : 8),
