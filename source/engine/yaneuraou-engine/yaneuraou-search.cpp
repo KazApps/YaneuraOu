@@ -2904,20 +2904,6 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
 
     improving |= ss->staticEval >= beta;
 
-	// -----------------------
-    // Step 10. Internal iterative reductions
-    // Step 10. 内部反復リダクション
-    // -----------------------
-
-	// At sufficient depth, reduce depth for PV/Cut nodes without a TTMove.
-	// (*Scaler) Making IIR more aggressive scales poorly.
-
-    // 十分な探索深さがある場合、置換表（TTMove）に手がないPVノードやCutノードについては探索深さを削減する。
-    //（*Scaler）IIR をよりアグレッシブにすると、スケーリング効率が悪化する。
-
-    if (!allNode && depth >= 6 && !ttData.move && priorReduction <= 3)
-        depth--;
-
 #if OLD_CODE
     // 🌈 以前のコードのほうが強い可能性がある。
 
