@@ -2915,7 +2915,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
     // 十分な探索深さがある場合、置換表（TTMove）に手がないPVノードやCutノードについては探索深さを削減する。
     //（*Scaler）IIR をよりアグレッシブにすると、スケーリング効率が悪化する。
 
-    if (!allNode && depth >= 6 && !ttData.move && priorReduction <= 3)
+    if (cutNode && depth >= 6 && !ttData.move && priorReduction <= 3)
         depth--;
 
 #if OLD_CODE
