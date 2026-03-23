@@ -2916,7 +2916,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
     //（*Scaler）IIR をよりアグレッシブにすると、スケーリング効率が悪化する。
 
     if (!allNode && depth >= 6 && !ttData.move && priorReduction <= 3)
-        depth--;
+        depth -= 2;
 
 #if OLD_CODE
     // 🌈 以前のコードのほうが強い可能性がある。
