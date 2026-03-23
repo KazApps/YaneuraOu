@@ -2918,6 +2918,9 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
     if (!allNode && depth >= 6 && !ttData.move && priorReduction <= 3)
         depth--;
 
+	if (depth <= 0)
+		return qsearch<PV>(pos, ss, alpha, beta);
+
 #if OLD_CODE
     // 🌈 以前のコードのほうが強い可能性がある。
 
