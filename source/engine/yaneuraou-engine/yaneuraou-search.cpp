@@ -3343,7 +3343,7 @@ moves_loop:  // When in check, search starts here
 		*/
 
 		// singular延長をするnodeであるか。
-		if (!rootNode && move == ttData.move && !excludedMove && depth >= 6 + ss->ttPv
+		if (!rootNode && !pos.capture(move) && move == ttData.move && !excludedMove && depth >= 6 + ss->ttPv
             && is_valid(ttData.value) && !is_decisive(ttData.value) && (ttData.bound & BOUND_LOWER)
             && ttData.depth >= depth - 3)
         {
@@ -3381,11 +3381,8 @@ moves_loop:  // When in check, search starts here
 
                 // 📝 2重延長を制限して探索の組合せ爆発を回避する必要がある。
 
-                if (pos.capture(move))
-                    extension = 1;
-                else
-                    extension =
-                        1 + (value < singularBeta - doubleMargin) + (value < singularBeta - tripleMargin);
+                extension =
+                    1 + (value < singularBeta - doubleMargin) + (value < singularBeta - tripleMargin);
 
                 depth++;
             }
