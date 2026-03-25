@@ -2784,7 +2784,14 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
 		💡 VALUE_NONE == 32002なのでこれより大きなstaticEvalの値であることはない。
 	*/
 
-    improving = ss->staticEval > (ss - 2)->staticEval;
+    if (ss->inCheck)
+        improving = false;
+    else if ((ss - 2)->staticEval != VALUE_NONE)
+        improving = ss->staticEval > (ss - 2)->staticEval;
+    else if ((ss - 4)->staticEval != VALUE_NONE)
+        improving = ss->staticEval > (ss - 4)->staticEval;
+    else
+        improving = false;
 
 	/*
 		📝 opponentWorseningは、相手の状況が悪化しているかのフラグ。
@@ -2857,8 +2864,8 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
     }
 
 	// -----------------------
-    // Step 9. Null move search with verification search
-    // Step 9. 検証探索を伴うnull move探索
+    // Step 9. Null move search
+    // Step 9. null move探索
     // -----------------------
 
     //  🖊 evalがbetaを超えているので1手パスしてもbetaは超えそう。だからnull moveを試す
