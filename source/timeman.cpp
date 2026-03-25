@@ -253,7 +253,7 @@ void TimeManagement::init_(const Search::LimitsType& limits,
 			// 1分以下 : ratio = 1.0固定
 			max_ratio = std::min(max_ratio, std::max(float(limits.time[us]) / (60 * 1000), 1.0f));
 		}
-		TimePoint t2 = minimumTime + (int)(remain_estimate * max_ratio / MTG);
+		TimePoint t2 = minimumTime + (int)(remain_estimate * max_ratio * std::pow(ply + 1, 0.9) / MTG);
 
 		// ただしmaximumは残り時間の30%以上は使わないものとする。
 		// optimumが超える分にはいい。それは残り手数が少ないときとかなので構わない。
