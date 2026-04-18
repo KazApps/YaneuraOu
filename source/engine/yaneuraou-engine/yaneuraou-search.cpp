@@ -2971,7 +2971,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
                       search_options.generate_all_legal_moves);
 #endif
 
-		Depth      probCutDepth = std::clamp(depth - 5 - (ss->staticEval - beta) / 329, 0, depth);
+		Depth      probCutDepth = std::clamp(depth / 2 - (ss->staticEval - beta) / 329, 0, depth);
 
 		// 💡 試行回数は2回(cutNodeなら4回)までとする。(よさげな指し手を3つ試して駄目なら駄目という扱い)
         //     cf. Do move-count pruning in probcut : https://github.com/official-stockfish/Stockfish/commit/b87308692a434d6725da72bbbb38a38d3cac1d5f
