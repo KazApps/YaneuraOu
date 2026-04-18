@@ -522,6 +522,7 @@ int correction_value(const YaneuraOuWorker& w, const Position& pos, const Stack*
     const auto  cntcv =
       m.is_ok() ? (*(ss - 2)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
 		        + (*(ss - 4)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
+		        + (*(ss - 6)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
                  : 8;
 
     return 16069 * pcv + 9255 * micv + 5974 * (wnpcv + bnpcv) + 10271 * cntcv;
@@ -557,6 +558,7 @@ void update_correction_history(const Position&          pos,
         const Piece  pc = pos.piece_on(m.to_sq());
         (*(ss - 2)->continuationCorrectionHistory)[pc][to] << bonus * 233 / 128;
         (*(ss - 4)->continuationCorrectionHistory)[pc][to] << bonus * 87 / 128;
+        (*(ss - 6)->continuationCorrectionHistory)[pc][to] << bonus * 64 / 128;
     }
 }
 
