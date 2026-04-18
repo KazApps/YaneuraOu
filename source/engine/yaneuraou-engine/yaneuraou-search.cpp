@@ -1950,7 +1950,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
 #if STOCKFISH
 	Value bestValue, value, eval, maxValue, probCutBeta;
 #else
-	Value bestValue, value, eval, probCutBeta;
+	Value bestValue, value, eval;
 #endif
 	// givesCheck			: moveによって王手になるのか
 	// improving			: 直前のnodeから評価値が上がってきているのか
@@ -2952,6 +2952,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
     // (残り探索深さを)削減された探索でbetaを大幅に上回る値が返される場合、
     // 直前の手を（ほぼ）安全に枝刈りできます。
 
+#if STOCKFISH
 	// probCutに使うbeta値。
 	probCutBeta = beta + 411 - 70 * improving;
 
@@ -2989,11 +2990,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
             //     MovePickerはprob cutの時に、
             //    (GenerateAllLegalMovesオプションがオンであっても)歩の成らずは返してこないことを保証すべき。
 
-#if STOCKFISH
             do_move(pos, move, st, ss);
-#else
-            do_move_(pos, move, st, ss);
-#endif
 
             // Perform a preliminary qsearch to verify that the move holds
             // この指し手がよさげであることを確認するための予備的なqsearch
@@ -3022,10 +3019,12 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
             }
         } // end of while
     }
+#endif
 
 moves_loop:  // When in check, search starts here
 			 // 王手がかかっている局面では、探索はここから始まる。
 
+#if STOCKFISH
 	// -----------------------
     // Step 12. A small Probcut idea
     // Step 12. 小さなProbcutのアイデア
@@ -3035,6 +3034,7 @@ moves_loop:  // When in check, search starts here
     if ((ttData.bound & BOUND_LOWER) && ttData.depth >= depth - 4 && ttData.value >= probCutBeta
         && !is_decisive(beta) && is_valid(ttData.value) && !is_decisive(ttData.value))
         return probCutBeta;
+#endif
 
 	// -----------------------
     // 🚀 moves loopに入る前の準備

@@ -45,6 +45,7 @@ enum Stages: int {
 	EVASION_INIT,				// (EVASIONSの指し手を生成)
 	EVASION,					// 回避する指し手(EVASIONS)を生成した指し手を一つずつ返す
 
+#if STOCKFISH
 	// -----------------------------------------------------
 	//   通常探索のProbCutの処理のなかから呼び出される用
 	// -----------------------------------------------------
@@ -52,6 +53,7 @@ enum Stages: int {
 	PROBCUT_TT,					// 置換表の指し手を返すフェーズ
 	PROBCUT_INIT,				// (PROBCUTの指し手を生成)
 	PROBCUT,					// 直前の指し手での駒の価値を上回る駒取りの指し手のみを生成するフェーズ
+#endif
 
 	// -----------------------------------------------------
 	//   静止探索時用の指し手生成
@@ -209,21 +211,12 @@ MovePicker::MovePicker(const Position&              p,
 // th = 枝刈りのしきい値
 // ⇨ SEEの値がth以上となるcaptureの指し手(歩の成りは含む)だけを生成する。
 
-MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceToHistory* cph
 #if STOCKFISH
-#else
-    , bool generate_all_legal_moves
-#endif
-
-                       ) :
+MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceToHistory* cph) :
     pos(p),
     captureHistory(cph),
     ttMove(ttm),
     threshold(Value(th))
-#if STOCKFISH
-#else
-    ,generate_all_legal_moves(generate_all_legal_moves)
-#endif
 
     {
 
@@ -234,23 +227,11 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
     // (置換表の指し手も、この条件を満たさなければならない)
     // 置換表の指し手がないなら、次のstageから開始する。
 
-    stage = PROBCUT_TT
-      + !(
-        ttm
-#if STOCKFISH        
-        && pos.capture_stage(ttm)
-        && pos.pseudo_legal(ttm) 
-#else
-        && pos.capture(ttm)
-        // 注意 : ⇑ ProbCutの指し手生成(PROBCUT_INIT)で、
-        // 歩の成りも生成するなら、ここはcapture_or_pawn_promotion()、しないならcapture()にすること。
-        // ただし、TTの指し手は優遇した方が良い可能性もある。
-        && pos.pseudo_legal(ttm, generate_all_legal_moves) 
-#endif
-	    );
+    stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm));
     // ⇨ qsearch()のTTと同様、置換表の指し手に関してはsee_geの条件、
     // つけないほうがいい可能性があるが、やってみたら良くなかった。(V774v2 vs V774v3)
 }
+#endif
 
 // Assigns a numerical value to each move in a list, used for sorting.
 // Captures are ordered by Most Valuable Victim (MVV), preferring captures
@@ -470,13 +451,17 @@ top:
     case MAIN_TT :
     case EVASION_TT :
     case QSEARCH_TT :
+#if STOCKFISH
     case PROBCUT_TT :
+#endif
         ++stage;
         return ttMove;
 
     // 置換表の指し手を返したあとのフェーズ
     case CAPTURE_INIT :
+#if STOCKFISH
     case PROBCUT_INIT :
+#endif
     case QCAPTURE_INIT : {
 
 #if STOCKFISH
@@ -685,8 +670,10 @@ top:
 		return select([]() { return true; });
 
 		// PROBCUTの指し手を返す
+#if STOCKFISH
 	case PROBCUT:
 		return select([&]() { return pos.see_ge(*cur, threshold); });
+#endif
 		// threadshold以上のSEE値で、ベストのものを一つずつ返す
 
 	default:
