@@ -2953,7 +2953,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
     // 直前の手を（ほぼ）安全に枝刈りできます。
 
 	// probCutに使うbeta値。
-	probCutBeta = beta + 411 - 70 * improving;
+	probCutBeta = beta + 411 - 70 * improving - 70 * opponentWorsening;
 
 	if (depth >= 3
         && !is_decisive(beta)
