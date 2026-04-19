@@ -2984,6 +2984,9 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
             if (move == excludedMove || !pos.legal(move))
                 continue;
 
+            if (!pos.see_ge(move, probCutBeta - ss->staticEval))
+                continue;
+
             //assert(pos.capture_stage(move));
             // ⚠ moveとして歩の成りも返ってくるが、これがcapture_stage()と一致するとは限らない。
             //     MovePickerはprob cutの時に、
