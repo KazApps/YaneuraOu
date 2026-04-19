@@ -209,7 +209,11 @@ MovePicker::MovePicker(const Position&              p,
 // th = 枝刈りのしきい値
 // ⇨ SEEの値がth以上となるcaptureの指し手(歩の成りは含む)だけを生成する。
 
-MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceToHistory* cph
+MovePicker::MovePicker(const Position& p, Move ttm,
+#if STOCKFISH
+	int th,
+#endif
+	const CapturePieceToHistory* cph
 #if STOCKFISH
 #else
     , bool generate_all_legal_moves
@@ -219,10 +223,10 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
     pos(p),
     captureHistory(cph),
     ttMove(ttm),
-    threshold(Value(th))
 #if STOCKFISH
+    threshold(Value(th))
 #else
-    ,generate_all_legal_moves(generate_all_legal_moves)
+    generate_all_legal_moves(generate_all_legal_moves)
 #endif
 
     {
@@ -686,7 +690,11 @@ top:
 
 		// PROBCUTの指し手を返す
 	case PROBCUT:
+#if STOCKFISH
 		return select([&]() { return pos.see_ge(*cur, threshold); });
+#else
+		return select([]() { return true; });
+#endif
 		// threadshold以上のSEE値で、ベストのものを一つずつ返す
 
 	default:

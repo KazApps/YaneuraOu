@@ -2967,7 +2967,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
 #if STOCKFISH
         MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory);
 #else
-        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory,
+        MovePicker mp(pos, ttData.move, &captureHistory,
                       search_options.generate_all_legal_moves);
 #endif
 

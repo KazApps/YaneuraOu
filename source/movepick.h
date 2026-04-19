@@ -64,7 +64,11 @@ class MovePicker {
     // SEEの値がth以上となるcaptureの指してだけを生成する。
     // threshold_ = 直前に取られた駒の価値。これ以下の捕獲の指し手は生成しない。
     // capture_or_pawn_promotion()に該当する指し手しか返さない。
-    MovePicker(const Position&, Move ttMove_, int threshold_, const CapturePieceToHistory*
+    MovePicker(const Position&, Move ttMove_,
+#if STOCKFISH
+        int threshold_, 
+#endif
+        const CapturePieceToHistory*
 #if STOCKFISH
 #else
     , bool generate_all_legal_moves
@@ -117,8 +121,10 @@ class MovePicker {
     // 指し手生成の段階
     int stage;
 
+#if STOCKFISH
     // ProbCut用の指し手生成に用いる、直前の指し手で捕獲された駒の価値
     int threshold;
+#endif
 
     // コンストラクタで渡された探索深さ
     Depth depth;
