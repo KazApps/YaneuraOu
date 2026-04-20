@@ -3378,14 +3378,17 @@ moves_loop:  // When in check, search starts here
                                  - 604 * ttMoveHistory / 186657 - (ss->ply > rootDepth) * 26;
                 int tripleMargin = 61 + 587 * PvNode - 229 * !ttCapture + 134 * ss->ttPv - corrValAdj
                                  - (ss->ply * 2 > rootDepth * 3) * 51;
+                int quadMargin   = 128 + 768 * PvNode - 256 * !ttCapture;
 
                 // 📝 2重延長を制限して探索の組合せ爆発を回避する必要がある。
 
                 if (pos.capture(move))
                     extension = 1;
                 else
-                    extension =
-                        1 + (value < singularBeta - doubleMargin) + (value < singularBeta - tripleMargin);
+                    extension = 1
+                        + (value < singularBeta - doubleMargin)
+                        + (value < singularBeta - tripleMargin)
+                        + (value < singularBeta - quadMargin);
 
                 depth++;
             }
