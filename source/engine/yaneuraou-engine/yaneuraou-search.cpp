@@ -3375,7 +3375,7 @@ moves_loop:  // When in check, search starts here
             {
                 int corrValAdj   = std::abs(correctionValue) / 299134;
                 int doubleMargin = -4 + 74 * PvNode - 181 * !ttCapture - corrValAdj
-                                 - 604 * ttMoveHistory / 186657 - (ss->ply > rootDepth) * 26;
+                                 - 604 * ttMoveHistory / 186657;
                 int tripleMargin = 61 + 587 * PvNode - 229 * !ttCapture + 134 * ss->ttPv - corrValAdj;
 
                 // 📝 2重延長を制限して探索の組合せ爆発を回避する必要がある。
