@@ -3356,7 +3356,7 @@ moves_loop:  // When in check, search starts here
             //  📍 このmargin値は評価関数の性質に合わせて調整されるべき。
 
             Value singularBeta  = ttData.value - (47 + 85 * (ss->ttPv && !PvNode)) * depth / 47;
-            Depth singularDepth = newDepth / 2;
+            Depth singularDepth = newDepth * 2 / 5;
 
             // 💡 move(ttMove)の指し手を以下のsearch()での探索から除外。
 
