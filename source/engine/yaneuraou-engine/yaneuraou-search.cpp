@@ -3439,6 +3439,10 @@ moves_loop:  // When in check, search starts here
             // If the ttMove is assumed to fail high over current beta
             // ttMove が現在の beta を超えて fail high すると想定される場合
 
+            else if (value > ttData.value) {
+                ttData.move = Move::null();
+                ttCapture = false;
+            }
             else if (ttData.value >= beta)
                 extension = -3;
 
