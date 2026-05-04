@@ -241,7 +241,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
         && pos.capture_stage(ttm)
         && pos.pseudo_legal(ttm) 
 #else
-        && pos.capture(ttm)
+        && pos.capture_or_pawn_promotion(ttm)
         // 注意 : ⇑ ProbCutの指し手生成(PROBCUT_INIT)で、
         // 歩の成りも生成するなら、ここはcapture_or_pawn_promotion()、しないならcapture()にすること。
         // ただし、TTの指し手は優遇した方が良い可能性もある。
