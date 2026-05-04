@@ -2546,10 +2546,9 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
                 bestValue = mate_in(ss->ply + 1);
 
                 ASSERT_LV3(pos.legal_promote(move));
-                if (!excludedMove)
-                    ttWriter.write(posKey, bestValue, ss->ttPv, BOUND_EXACT,
-                                    std::min(MAX_PLY - 1, depth + 6), move, VALUE_NONE,
-                                    tt.generation());
+                ttWriter.write(posKey, bestValue, ss->ttPv, BOUND_EXACT,
+                                std::min(MAX_PLY - 1, depth + 6), move, VALUE_NONE,
+                                tt.generation());
 
 				// ⚠ excludedMoveがあるときは置換表に書き出さないルールになっているので、
                 //     この↑の条件式が必要なので注意。
