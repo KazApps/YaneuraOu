@@ -2816,7 +2816,7 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
 	// 評価値が非常に低い場合、検索を完全にスキップして qsearch の値を返します。
     // PvNode では、チェックメイトが返されるのを防ぐためのガードが必要です。
 
-    if (!PvNode && eval < alpha - 774 - 59 * depth * depth)
+    if (!PvNode && eval < alpha - 774 - 300 * depth)
         return qsearch<NonPV>(pos, ss, alpha, beta);
 
 	// -----------------------
