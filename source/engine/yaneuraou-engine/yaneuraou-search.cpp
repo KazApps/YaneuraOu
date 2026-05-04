@@ -2521,69 +2521,64 @@ Value YaneuraOuWorker::search(Position& pos, Stack* ss, Value alpha, Value beta,
 			ただ、静止探索で入れている以上、depth == 1でも1手詰めを判定したほうがよさげではある。
 	*/
 
-	if (!rootNode && !ttHit
-		// TODO : この条件必要なのか？
-        && !excludedMove
-    )
+
+    if (!ss->inCheck)
     {
-        if (!ss->inCheck)
+        move = Mate::mate_1ply(pos);
+
+        if (move != Move::none())
         {
-            move = Mate::mate_1ply(pos);
+            /*
+                🤔 1手詰めスコアなので確実にvalue > alphaなはず。
+                    1手詰めは次のnodeで詰むという解釈
 
-            if (move != Move::none())
-            {
-                /*
-					🤔 1手詰めスコアなので確実にvalue > alphaなはず。
-					    1手詰めは次のnodeで詰むという解釈
+                ⚠ このとき、bestValueをvalue_to_tt()で変換してはならない。
+                    mate_in()はrootからの計算された詰みのスコアであるから、このまま置換表に格納してよい。
+            
+                    あるいは、VALUE_MATE - 1をvalue_to_tt()で変換したものを置換表に格納するかだが、
+                    その場合、returnで返す値を用意するのに再度変換が必要になるのでそういう書き方は良くない。
+            */
 
-					⚠ このとき、bestValueをvalue_to_tt()で変換してはならない。
-					    mate_in()はrootからの計算された詰みのスコアであるから、このまま置換表に格納してよい。
-                
-                		あるいは、VALUE_MATE - 1をvalue_to_tt()で変換したものを置換表に格納するかだが、
-					    その場合、returnで返す値を用意するのに再度変換が必要になるのでそういう書き方は良くない。
-				*/
+            bestValue = mate_in(ss->ply + 1);
 
-                bestValue = mate_in(ss->ply + 1);
+            ASSERT_LV3(pos.legal_promote(move));
+            if (!excludedMove)
+                ttWriter.write(posKey, bestValue, ss->ttPv, BOUND_EXACT,
+                                std::min(MAX_PLY - 1, depth + 6), move, VALUE_NONE,
+                                tt.generation());
 
-                ASSERT_LV3(pos.legal_promote(move));
-                if (!excludedMove)
-                    ttWriter.write(posKey, bestValue, ss->ttPv, BOUND_EXACT,
-                                    std::min(MAX_PLY - 1, depth + 6), move, VALUE_NONE,
-                                    tt.generation());
+            // ⚠ excludedMoveがあるときは置換表に書き出さないルールになっているので、
+            //     この↑の条件式が必要なので注意。
 
-				// ⚠ excludedMoveがあるときは置換表に書き出さないルールになっているので、
-                //     この↑の条件式が必要なので注意。
+            /*
+                📝 
+            　	 【計測資料 39.】 mate1plyの指し手を見つけた時に置換表の指し手でbeta
+                    cutする時と同じ処理をする。
 
-				/*
-				   📝 
-                　	 【計測資料 39.】 mate1plyの指し手を見つけた時に置換表の指し手でbeta
-					  cutする時と同じ処理をする。
+                    兄弟局面でこのmateの指し手がよい指し手ある可能性があるので ここでttMoveでbeta
+                    cutする時と同様の処理を行うと短い時間ではわずかに強くなるっぽいのだが
+                    長い時間で計測できる差ではなかったので削除。
 
-                      兄弟局面でこのmateの指し手がよい指し手ある可能性があるので ここでttMoveでbeta
-                      cutする時と同様の処理を行うと短い時間ではわずかに強くなるっぽいのだが
-                      長い時間で計測できる差ではなかったので削除。
+                💡
+                    1手詰めを発見した時に、save()でdepthをどのように設定すべきか問題について。
 
-					💡
-						1手詰めを発見した時に、save()でdepthをどのように設定すべきか問題について。
+                    即詰みは絶対であり、MAX_PLYの深さで探索した時の結果と同じであるから、
+                    以前はMAX_PLYにしていたのだが、よく考えたら、即詰みがあるなら上位ノードで
+                    枝刈りが発生してこのノードにはほぼ再訪問しないと考えられるのでこんなものが
+                    置換表に残っている価値に乏しく、また、MAX_PLYにしてしまうと、
+                    TTEntryのreplacement strategy上、depthが大きなTTEntryはかなりの優先度になり
+                    いつまでもreplacementされない。
 
-						即詰みは絶対であり、MAX_PLYの深さで探索した時の結果と同じであるから、
-						以前はMAX_PLYにしていたのだが、よく考えたら、即詰みがあるなら上位ノードで
-						枝刈りが発生してこのノードにはほぼ再訪問しないと考えられるのでこんなものが
-						置換表に残っている価値に乏しく、また、MAX_PLYにしてしまうと、
-						TTEntryのreplacement strategy上、depthが大きなTTEntryはかなりの優先度になり
-						いつまでもreplacementされない。
+                    こんな情報、lostしたところで1手詰めならmate1ply()で一手も進めずに得られる情報であり、
+                    最優先にreplaceすべきTTEntryにも関わらずである。
 
-						こんな情報、lostしたところで1手詰めならmate1ply()で一手も進めずに得られる情報であり、
-						最優先にreplaceすべきTTEntryにも関わらずである。
+                    かと言ってDEPTH_NONEにするとtt->depth()が 0 になってしまい、枝刈りがされなくなる。
+                    そこで、depth + 6 ぐらいがベストであるようだ。
+            */
 
-						かと言ってDEPTH_NONEにするとtt->depth()が 0 になってしまい、枝刈りがされなくなる。
-						そこで、depth + 6 ぐらいがベストであるようだ。
-				*/
-
-				return bestValue;
-            }
+            return bestValue;
         }
-	}
+    }
 
 	// -----------------------
     //      宣言勝ちか？
