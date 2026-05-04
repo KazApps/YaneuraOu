@@ -3934,11 +3934,6 @@ moves_loop:  // When in check, search starts here
                                       scaledBonus * 438 / 32768);
 
         mainHistory[~us][((ss - 1)->currentMove).raw()] << scaledBonus * 330 / 32768;
-
-		// TODO : これで合ってるか？あとで検証する。
-        if (type_of(pos.piece_on(prevSq)) != PAWN && ((ss - 1)->currentMove).type_of() != PROMOTION)
-            pawnHistory[pawn_history_index(pos)][pos.piece_on(prevSq)][prevSq]
-              << scaledBonus * 1687 / 32768;
     }
 
     // Bonus for prior capture countermove that caused the fail low
