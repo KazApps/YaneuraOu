@@ -3917,7 +3917,7 @@ moves_loop:  // When in check, search starts here
 
 		📊 【計測資料 15.】search()でfail lowしているときにhistoryのupdateを行なう条件
 	*/
-    else if (!priorCapture && prevSq != SQ_NONE)
+    else if (!priorCapture && prevSq != SQ_NONE && !allNode)
     {
         int bonusScale = -148;
         bonusScale -= (ss - 1)->statScore / 172;
@@ -3944,7 +3944,7 @@ moves_loop:  // When in check, search starts here
     // Bonus for prior capture countermove that caused the fail low
     // 前のfail lowを引き起こしたcapture countermoveに対するボーナス
 
-    else if (priorCapture && prevSq != SQ_NONE)
+    else if (priorCapture && prevSq != SQ_NONE && !allNode)
     {
         Piece capturedPiece = pos.captured_piece();
         assert(capturedPiece != NO_PIECE);
